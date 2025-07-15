@@ -1,6 +1,6 @@
 // lib/services/uploadService.ts
 
-import { writeFile } from 'fs/promises';
+import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 
@@ -25,6 +25,9 @@ export class UploadService {
       // Получаем данные файла
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
+
+      // Создаем папку, если она не существует
+      await mkdir(this.uploadDir, { recursive: true });
 
       // Сохраняем файл
       await writeFile(filePath, buffer);
