@@ -8,20 +8,20 @@ export const WB_CHARACTERISTICS_IDS = {
   BRAND: 8229,              // Бренд
   COUNTRY: 7919,            // Страна производства
   GENDER: 7183,             // Пол
-  
+
   // Размеры и вес
   LENGTH: 16999,            // Длина упаковки (см)
   WIDTH: 17001,             // Ширина упаковки (см)
   HEIGHT: 17003,            // Высота упаковки (см)
   WEIGHT: 17005,            // Вес товара с упаковкой (г)
-  
+
   // Дополнительные характеристики
   COMPOSITION: 7175,        // Состав
   CARE_INSTRUCTIONS: 7176,  // Уход
   SEASON: 7177,             // Сезон
   STYLE: 7178,              // Стиль
   OCCASION: 7179,           // Повод
-  
+
   // Размерные характеристики одежды
   SIZE: 7180,               // Размер
   SIZE_TYPE: 7181,          // Тип размера
@@ -71,71 +71,70 @@ export interface WBCharacteristic {
 
 // Класс для работы с характеристиками WB
 export class WBCharacteristicsHelper {
-  
   // Создание характеристики
   static createCharacteristic(id: number, value: string): WBCharacteristic {
     return {
       id,
-      value: value.toString()
+      value: value.toString(),
     };
   }
-  
+
   // Получение ID характеристики по названию
   static getCharacteristicId(name: string): number | null {
     const normalizedName = name.toLowerCase().trim();
     return CHARACTERISTIC_NAME_TO_ID[normalizedName] || null;
   }
-  
+
   // Получение дефолтного значения для характеристики
   static getDefaultValue(id: number): string {
     return DEFAULT_CHARACTERISTIC_VALUES[id] || 'не указан';
   }
-  
+
   // Валидация характеристики
   static validateCharacteristic(characteristic: WBCharacteristic): boolean {
-    return typeof characteristic.id === 'number' && 
-           characteristic.id > 0 && 
-           typeof characteristic.value === 'string' && 
-           characteristic.value.trim().length > 0;
+    return (
+      typeof characteristic.id === 'number' &&
+      characteristic.id > 0 &&
+      typeof characteristic.value === 'string' &&
+      characteristic.value.trim().length > 0
+    );
   }
-  
+
   // Слияние характеристик (приоритет у первого массива)
   static mergeCharacteristics(
-    primary: WBCharacteristic[], 
+    primary: WBCharacteristic[],
     secondary: WBCharacteristic[]
   ): WBCharacteristic[] {
     const result = [...primary];
-    
     for (const char of secondary) {
-      if (!result.find(c => c.id === char.id)) {
+      if (!result.find((c) => c.id === char.id)) {
         result.push(char);
       }
     }
-    
     return result;
   }
-  
+
   // Добавление обязательных характеристик с дефолтными значениями
   static addRequiredCharacteristics(
     characteristics: WBCharacteristic[],
     requiredIds: number[]
   ): WBCharacteristic[] {
     const result = [...characteristics];
-    
     for (const id of requiredIds) {
-      if (!result.find(c => c.id === id)) {
+      if (!result.find((c) => c.id === id)) {
         result.push(this.createCharacteristic(id, this.getDefaultValue(id)));
       }
     }
-    
     return result;
   }
-  
+
   // Фильтрация валидных характеристик
-  static filterValidCharacteristics(characteristics: WBCharacteristic[]): WBCharacteristic[] {
-    return characteristics.filter(char => this.validateCharacteristic(char));
+  static filterValidCharacteristics(
+    characteristics: WBCharacteristic[]
+  ): WBCharacteristic[] {
+    return characteristics.filter((char) => this.validateCharacteristic(char));
   }
-  
+
   // Создание базового набора характеристик
   static createBaseCharacteristics(
     color?: string,
@@ -144,19 +143,17 @@ export class WBCharacteristicsHelper {
     dimensions?: { length?: string; width?: string; height?: string; weight?: string }
   ): WBCharacteristic[] {
     const characteristics: WBCharacteristic[] = [];
-    
+
     if (color) {
       characteristics.push(this.createCharacteristic(WB_CHARACTERISTICS_IDS.MAIN_COLOR, color));
     }
-    
     if (material) {
       characteristics.push(this.createCharacteristic(WB_CHARACTERISTICS_IDS.MATERIAL, material));
     }
-    
     if (brand) {
       characteristics.push(this.createCharacteristic(WB_CHARACTERISTICS_IDS.BRAND, brand));
     }
-    
+
     // Добавляем размеры
     if (dimensions) {
       if (dimensions.length) {
@@ -172,77 +169,74 @@ export class WBCharacteristicsHelper {
         characteristics.push(this.createCharacteristic(WB_CHARACTERISTICS_IDS.WEIGHT, dimensions.weight));
       }
     }
-    
+
     // Добавляем страну производства
     characteristics.push(this.createCharacteristic(WB_CHARACTERISTICS_IDS.COUNTRY, 'Россия'));
-    
+
     return characteristics;
   }
-  
+
   // Оптимизация характеристик под конкретную категорию
   static optimizeForCategory(
     characteristics: WBCharacteristic[],
     categoryId: number
   ): WBCharacteristic[] {
-    // Здесь можно добавить логику для оптимизации характеристик
-    // в зависимости от категории товара
     let optimized = [...characteristics];
-    
     // Для категории "Одежда" добавляем специфичные характеристики
-    if (categoryId === 14727) { // Пример ID категории одежды
-      const hasGender = optimized.find(c => c.id === WB_CHARACTERISTICS_IDS.GENDER);
+    if (categoryId === 14727) {
+      const hasGender = optimized.find((c) => c.id === WB_CHARACTERISTICS_IDS.GENDER);
       if (!hasGender) {
         optimized.push(this.createCharacteristic(WB_CHARACTERISTICS_IDS.GENDER, 'унисекс'));
       }
-      
-      const hasSeason = optimized.find(c => c.id === WB_CHARACTERISTICS_IDS.SEASON);
+      const hasSeason = optimized.find((c) => c.id === WB_CHARACTERISTICS_IDS.SEASON);
       if (!hasSeason) {
         optimized.push(this.createCharacteristic(WB_CHARACTERISTICS_IDS.SEASON, 'всесезон'));
       }
     }
-    
     return optimized;
   }
-  
+
   // Преобразование характеристик в формат для WB API
   static formatForWBAPI(characteristics: WBCharacteristic[]): any[] {
     return characteristics
-      .filter(char => this.validateCharacteristic(char))
-      .map(char => ({
+      .filter((char) => this.validateCharacteristic(char))
+      .map((char) => ({
         id: char.id,
-        value: char.value.trim()
+        value: char.value.trim(),
       }));
   }
-  
+
   // Получение характеристики по ID
   static getCharacteristicById(
-    characteristics: WBCharacteristic[], 
+    characteristics: WBCharacteristic[],
     id: number
   ): WBCharacteristic | null {
-    return characteristics.find(char => char.id === id) || null;
+    return characteristics.find((char) => char.id === id) || null;
   }
-  
+
   // Обновление характеристики
   static updateCharacteristic(
     characteristics: WBCharacteristic[],
     id: number,
     newValue: string
   ): WBCharacteristic[] {
-    return characteristics.map(char => 
+    return characteristics.map((char) =>
       char.id === id ? { ...char, value: newValue } : char
     );
   }
-  
+
   // Удаление характеристики
   static removeCharacteristic(
     characteristics: WBCharacteristic[],
     id: number
   ): WBCharacteristic[] {
-    return characteristics.filter(char => char.id !== id);
+    return characteristics.filter((char) => char.id !== id);
   }
-  
+
   // Группировка характеристик по типу
-  static groupCharacteristics(characteristics: WBCharacteristic[]): {
+  static groupCharacteristics(
+    characteristics: WBCharacteristic[]
+  ): {
     basic: WBCharacteristic[];
     dimensions: WBCharacteristic[];
     specific: WBCharacteristic[];
@@ -250,22 +244,22 @@ export class WBCharacteristicsHelper {
     const basic: WBCharacteristic[] = [];
     const dimensions: WBCharacteristic[] = [];
     const specific: WBCharacteristic[] = [];
-    
-    const basicIds = [
+
+    const basicIds: number[] = [
       WB_CHARACTERISTICS_IDS.MAIN_COLOR,
       WB_CHARACTERISTICS_IDS.MATERIAL,
       WB_CHARACTERISTICS_IDS.BRAND,
       WB_CHARACTERISTICS_IDS.COUNTRY,
       WB_CHARACTERISTICS_IDS.GENDER
     ];
-    
-    const dimensionIds = [
+
+    const dimensionIds: number[] = [
       WB_CHARACTERISTICS_IDS.LENGTH,
       WB_CHARACTERISTICS_IDS.WIDTH,
       WB_CHARACTERISTICS_IDS.HEIGHT,
       WB_CHARACTERISTICS_IDS.WEIGHT
     ];
-    
+
     for (const char of characteristics) {
       if (basicIds.includes(char.id)) {
         basic.push(char);
@@ -275,7 +269,8 @@ export class WBCharacteristicsHelper {
         specific.push(char);
       }
     }
-    
+
     return { basic, dimensions, specific };
   }
 }
+    

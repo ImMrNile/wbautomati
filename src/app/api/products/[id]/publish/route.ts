@@ -1,10 +1,8 @@
+// src/app/api/products/[id]/publish/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-
+import { PrismaClient, Cabinet } from '@prisma/client';
 const prisma = new PrismaClient();
 
-// Ваш API токен Wildberries
-const WB_API_TOKEN = 'eyJhbGciOiJFUzI1NiIsImtpZCI6IjIwMjUwNTIwdjEiLCJ0eXAiOiJKV1QifQ.eyJlbnQiOjEsImV4cCI6MTc2ODE3MjQwOCwiaWQiOiIwMTk4MDM3MS0zOWFhLTcwNWUtYTJiNS03MDlmY2E2MzlkNDYiLCJpaWQiOjQ5ODExMjk0LCJvaWQiOjE3NTkyMywicyI6MTYxMjYsInNpZCI6IjM0Njg2NjNlLWIzZDMtNDM2OC1iYzRkLWIwNDAwMWE3MjU4YiIsInQiOmZhbHNlLCJ1aWQiOjQ5ODExMjk0fQ.yd2WOPAtGRQmnyri0K9OB2TAFPI6EeB08cJQGA3XNVK_uNZEwnEPMEleFfZ8GtlN36JZdOgo6gJ2KoXvO2y3uw';
 
 interface WBCreateCardRequest {
   vendorCode: string;
@@ -56,7 +54,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Получаем кабинет для публикации
-    let cabinet = null;
+    let cabinet: Cabinet | null = null;
     if (cabinetId) {
       cabinet = await prisma.cabinet.findUnique({
         where: { id: cabinetId }
@@ -179,7 +177,7 @@ async function prepareDataForWB(product: any, customData?: any) {
   }
 
   // Подготавливаем характеристики
-  const characteristics = [];
+  const characteristics: Array<{ id: number; value: any }> = [];
 
   // Добавляем характеристики из ИИ-анализа
   if (aiCharacteristics?.vision) {
@@ -277,7 +275,6 @@ async function getCategoryIdByName(categoryName: string): Promise<number | null>
     const response = await fetch('https://suppliers-api.wildberries.ru/content/v2/object/all', {
       method: 'GET',
       headers: {
-        'Authorization': WB_API_TOKEN,
         'Content-Type': 'application/json'
       }
     });

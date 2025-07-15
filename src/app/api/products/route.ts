@@ -1,3 +1,4 @@
+// src/app/api/products/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { toPrismaJson, toPrismaNullableJson } from '../../../../lib/utils/json';
@@ -250,11 +251,10 @@ async function processProductWithGeminiAI(
     
     // Шаг 5: Оптимизация характеристик
     logger.logStep('OPTIMIZE_CHARACTERISTICS', 'Оптимизируем характеристики');
-    const optimizedCharacteristics = await optimizeCharacteristicsWithGemini(
+const optimizedCharacteristics = await optimizeCharacteristicsWithGemini(
       geminiAnalysis.characteristics,
       categoryCharacteristics,
-      geminiAnalysis.visualAnalysis,
-      dimensions
+      geminiAnalysis.visualAnalysis
     );
 
     // Шаг 6: Подготовка данных для WB API

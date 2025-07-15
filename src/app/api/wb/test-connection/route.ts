@@ -1,3 +1,5 @@
+// src/app/api/wb/test-connection/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
