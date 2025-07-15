@@ -1,0 +1,107 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Cabinet {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  apiToken    String   // Зашифрованный токен WB API
+  description String?  // Описание кабинета
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Связь с промежуточной таблицей ProductCabinet
+  productCabinets ProductCabinet[]
+  
+  @@map("wb_cabinets")
+}
+
+model Product {
+  id                String   @id @default(cuid())
+  originalName      String   // Исходное название от пользователя
+  generatedName     String?  // Сгенерированное ИИ название
+  originalImage     String   // URL оригинального изображения
+  dimensions        Json     // {length, width, height, weight}
+  price             Decimal  @db.Decimal(10, 2)
+  
+  // Ссылка на аналог с WB
+  referenceUrl      String?  // URL товара-аналога
+  referenceData     Json?    // Данные спарсенного аналога
+  
+  // ИИ-анализ
+  suggestedCategory String?
+  colorAnalysis     String?
+  seoDescription    String?
+  aiCharacteristics Json?    // Характеристики от ИИ
+  
+  // Статус обработки
+  status           ProductStatus @default(PENDING)
+  errorMessage     String?       // Сообщение об ошибке
+  
+  // Данные публикации в WB
+  wbNmId           Int?          // NM ID товара в Wildberries
+  publishedAt      DateTime?     // Дата публикации в WB
+  wbData           Json?         // Полные данные карточки из WB API
+  
+  // Связь с промежуточной таблицей ProductCabinet
+  productCabinets  ProductCabinet[]
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  @@map("products")
+}
+
+model ProductCabinet {
+  id          String   @id @default(cuid())
+  productId   String
+  cabinetId   String
+  
+  // Статус размещения в конкретном кабинете
+  isSelected  Boolean  @default(false)
+  isPublished Boolean  @default(false)
+  wbCardId    String?  // ID карточки в WB после создания
+  
+  // Отношения
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cabinet     Cabinet  @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([productId, cabinetId])
+  @@map("product_cabinets")
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String
+  wbId        Int      // ID категории в системе WB
+  parentId    String?
+  
+  parent      Category? @relation("CategoryTree", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryTree")
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("categories")
+}
+
+enum ProductStatus {
+  PENDING      // Ожидает обработки
+  PROCESSING   // В процессе обработки ИИ
+  READY        // Готов к публикации
+  PUBLISHING   // В процессе публикации в WB
+  PUBLISHED    // Опубликован в WB
+  ERROR        // Ошибка при обработке
+}
