@@ -51,8 +51,11 @@ export class WBParser {
   async getProductData(productId: string): Promise<any> {
     try {
       // Получаем базовую информацию через публичный API
+      const referer = `https://www.wildberries.ru/catalog/${productId}/detail.aspx`;
       const cardResponse = await this.makeRequest(
-        `${this.PUBLIC_ENDPOINTS.card}?appType=1&curr=rub&dest=-1257786&spp=0&nm=${productId}`
+        `${this.PUBLIC_ENDPOINTS.card}?appType=1&curr=rub&dest=-1257786&spp=0&nm=${productId}`,
+        undefined,
+        referer
       );
       
       if (!cardResponse.ok) {
@@ -178,7 +181,8 @@ export class WBParser {
     token: string,
     method: string = 'GET',
     body?: any,
-    retries: number = 3
+    retries: number = 3,
+    referer: string = 'https://www.wildberries.ru/'
   ): Promise<Response> {
     const headers: HeadersInit = {
       'Authorization': token,
@@ -186,7 +190,9 @@ export class WBParser {
       'User-Agent': this.USER_AGENTS[Math.floor(Math.random() * this.USER_AGENTS.length)],
       'Accept': 'application/json, text/plain, */*',
       'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-      'Connection': 'keep-alive'
+      'Connection': 'keep-alive',
+      'Referer': referer,
+      'X-Requested-With': 'XMLHttpRequest'
     };
 
     const options: RequestInit = {
@@ -195,7 +201,7 @@ export class WBParser {
       ...(body && { body: JSON.stringify(body) })
     };
 
-    const delay = 300 + Math.random() * 700;
+    const delay = 500 + Math.random() * 1000;
     await this.sleep(delay);
 
     for (let attempt = 1; attempt <= retries; attempt++) {
@@ -228,16 +234,22 @@ export class WBParser {
   }
 
   // Универсальный метод для публичных запросов
-  private async makeRequest(url: string, options?: RequestInit): Promise<Response> {
+  private async makeRequest(
+    url: string,
+    options?: RequestInit,
+    referer: string = 'https://www.wildberries.ru/'
+  ): Promise<Response> {
     const headers: Record<string, string> = {
       'User-Agent': this.USER_AGENTS[Math.floor(Math.random() * this.USER_AGENTS.length)],
       'Accept': 'application/json, text/plain, */*',
       'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
       'Connection': 'keep-alive',
+      'Referer': referer,
+      'X-Requested-With': 'XMLHttpRequest',
       ...(options?.headers as Record<string, string> ?? {})
     };
 
-    const delay = 300 + Math.random() * 700;
+    const delay = 500 + Math.random() * 1000;
     await this.sleep(delay);
 
     return fetch(url, { ...options, headers });
@@ -246,8 +258,11 @@ export class WBParser {
   // Получение отзывов товара
   private async getProductReviews(productId: string) {
     try {
+      const ref = `https://www.wildberries.ru/catalog/${productId}/detail.aspx`;
       const reviewsResponse = await this.makeRequest(
-        `${this.PUBLIC_ENDPOINTS.feedbacks}/${productId}`
+        `${this.PUBLIC_ENDPOINTS.feedbacks}/${productId}`,
+        undefined,
+        ref
       );
       
       if (!reviewsResponse.ok) {
@@ -459,8 +474,11 @@ export class WBParser {
   // Анализ конкурентов через публичный поиск
   async analyzeCompetitors(categoryName: string, limit: number = 10): Promise<any[]> {
     try {
+      const ref = 'https://www.wildberries.ru/';
       const searchResponse = await this.makeRequest(
-        `${this.PUBLIC_ENDPOINTS.search}?appType=1&curr=rub&dest=-1257786&query=${encodeURIComponent(categoryName)}&resultset=catalog&sort=popular&spp=0`
+        `${this.PUBLIC_ENDPOINTS.search}?appType=1&curr=rub&dest=-1257786&query=${encodeURIComponent(categoryName)}&resultset=catalog&sort=popular&spp=0`,
+        undefined,
+        ref
       );
       
       if (!searchResponse.ok) {
@@ -496,8 +514,11 @@ export class WBParser {
   async getTrendingProducts(category: string = ''): Promise<any[]> {
     try {
       const query = category ? `&subject=${encodeURIComponent(category)}` : '';
+      const ref = 'https://www.wildberries.ru/';
       const response = await this.makeRequest(
-        `${this.PUBLIC_ENDPOINTS.search}?appType=1&curr=rub&dest=-1257786&resultset=catalog&sort=popular&spp=0${query}`
+        `${this.PUBLIC_ENDPOINTS.search}?appType=1&curr=rub&dest=-1257786&resultset=catalog&sort=popular&spp=0${query}`,
+        undefined,
+        ref
       );
       
       if (!response.ok) {
@@ -530,8 +551,11 @@ export class WBParser {
   // Анализ SEO ключевых слов
   async analyzeSEOKeywords(productName: string): Promise<string[]> {
     try {
+      const ref = 'https://www.wildberries.ru/';
       const searchResponse = await this.makeRequest(
-        `${this.PUBLIC_ENDPOINTS.search}?appType=1&curr=rub&dest=-1257786&query=${encodeURIComponent(productName)}&resultset=catalog&sort=popular&spp=0`
+        `${this.PUBLIC_ENDPOINTS.search}?appType=1&curr=rub&dest=-1257786&query=${encodeURIComponent(productName)}&resultset=catalog&sort=popular&spp=0`,
+        undefined,
+        ref
       );
       
       if (!searchResponse.ok) {
