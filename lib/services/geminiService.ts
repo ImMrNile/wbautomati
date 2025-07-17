@@ -1,5 +1,13 @@
 // lib/services/geminiService.ts
-import { GoogleGenerativeAI, Part } from '@google/generative-ai';
+import OpenAI from 'openai';
+
+interface ContentPart {
+  text?: string;
+  inlineData?: {
+    mimeType: string;
+    data: string;
+  };
+}
 
 interface ProductAnalysisInput {
   productName: string;
@@ -39,18 +47,17 @@ interface ProductAnalysisResult {
 }
 
 export class GeminiService {
-  private genAI: GoogleGenerativeAI;
-  private model: any;
+  private openai: OpenAI;
+  private model: string;
 
   constructor() {
-    // Исправлена опечатка в названии переменной окружения
-    if (!process.env.GEMINI_API_KEY) {
-      throw new Error('GEMINI_API_KEY не найден в переменных окружения');
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error('OPENAI_API_KEY не найден в переменных окружения');
     }
-    
-    this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    // Используем актуальное название модели
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
+
+    this.openai = new OpenAI({ apiKey });
+    this.model = process.env.OPENAI_MODEL || 'gpt-4o';
   }
 
   // Основной метод анализа товара для создания карточки
@@ -64,10 +71,7 @@ export class GeminiService {
       // Подготавливаем части для запроса (текст + изображения)
       const parts = await this.prepareParts(prompt, input.images);
 
-      // Отправляем запрос к Gemini
-      const result = await this.model.generateContent(parts);
-      const response = await result.response;
-      const text = response.text();
+      const text = await this.sendToOpenAI(parts);
 
       console.log('Получен ответ от Gemini, парсим JSON...');
 
@@ -177,8 +181,8 @@ ${input.referenceData ? `- **ДАННЫЕ УСПЕШНОГО АНАЛОГА НА
   }
 
   // Подготовка частей для запроса (текст + изображения)
-  private async prepareParts(prompt: string, imageUrls: string[]): Promise<Part[]> {
-    const parts: Part[] = [{ text: prompt }];
+  private async prepareParts(prompt: string, imageUrls: string[]): Promise<ContentPart[]> {
+    const parts: ContentPart[] = [{ text: prompt }];
 
     // Обрабатываем максимум 4 изображения
     for (const imageUrl of imageUrls.slice(0, 4)) {
@@ -238,12 +242,41 @@ ${input.referenceData ? `- **ДАННЫЕ УСПЕШНОГО АНАЛОГА НА
     try {
       const urlObj = new URL(url);
       const validExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
-      return validExtensions.some(ext => 
+      return validExtensions.some(ext =>
         urlObj.pathname.toLowerCase().includes(ext)
       );
     } catch {
       return false;
     }
+  }
+
+  private async sendToOpenAI(parts: ContentPart[]): Promise<string> {
+    const content = parts.map(part => {
+      if (part.text) {
+        return { type: 'text' as const, text: part.text };
+      }
+      if (part.inlineData) {
+        return {
+          type: 'image_url' as const,
+          image_url: {
+            url: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
+          }
+        };
+      }
+      return { type: 'text' as const, text: '' };
+    });
+
+    const response = await this.openai.chat.completions.create({
+      model: this.model,
+      messages: [
+        {
+          role: 'user',
+          content
+        }
+      ]
+    });
+
+    return response.choices[0]?.message?.content || '';
   }
 
   // Парсинг ответа от Gemini
@@ -361,9 +394,7 @@ ${JSON.stringify(competitorData, null, 2)}
   "overallRecommendations": ["общие рекомендации"]
 }`;
 
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const text = await this.sendToOpenAI([{ text: prompt }]);
 
       return JSON.parse(text);
     } catch (error) {
@@ -394,9 +425,7 @@ ${JSON.stringify(competitorData, null, 2)}
 
 Ответь массивом строк в JSON формате: ["заголовок1", "заголовок2", ...]`;
 
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const text = await this.sendToOpenAI([{ text: prompt }]);
 
       const cleanText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '');
       return JSON.parse(cleanText);
@@ -439,9 +468,8 @@ ${targetKeywords.join(', ')}` : ''}
 
 Верни только оптимизированный текст описания.`;
 
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      return response.text().trim();
+      const text = await this.sendToOpenAI([{ text: prompt }]);
+      return text.trim();
 
     } catch (error) {
       console.error('Ошибка оптимизации описания:', error);
@@ -472,9 +500,7 @@ ${targetKeywords.join(', ')}` : ''}
   "demandForecast": "прогноз спроса"
 }`;
 
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const text = await this.sendToOpenAI([{ text: prompt }]);
 
       return JSON.parse(text);
     } catch (error) {
