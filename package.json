@@ -12,7 +12,6 @@
         "db:studio": "prisma studio"
     },
     "dependencies": {
-        "@google/generative-ai": "^0.21.0",
         "@prisma/client": "^5.0.0",
         "@supabase/supabase-js": "^2.39.0",
         "crypto": "^1.0.1",
@@ -20,6 +19,7 @@
         "next": "^14.2.30",
         "react": "^18.0.0",
         "react-dom": "^18.0.0",
+        "replicate": "^1.0.1",
         "tailwindcss": "^3.3.0",
         "typescript": "^5.0.0"
     },
