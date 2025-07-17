@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { toPrismaJson, toPrismaNullableJson } from '../../../../lib/utils/json';
 import { wbParser } from '../../../../lib/services/wbParser';
 import { uploadService } from '../../../../lib/services/uploadService';
+import { geminiService } from '../../../../lib/services/geminiService';
 import { WBCharacteristicsHelper, WB_CHARACTERISTICS_IDS } from '../../../../lib/utils/wbCharacteristics';
 import { ErrorHandler, ProcessLogger, ValidationUtils, ErrorCode } from '../../../../lib/utils/errorHandler';
 import { ProductStatus } from '../../../../lib/types/gemini';
@@ -224,7 +225,7 @@ async function processProductWithReplicateAI(
       price: price
     };
 
-    const replicateAnalysis = await replicateService.analyzeProductForWB(analysisInput);
+    const replicateAnalysis = await geminiService.analyzeProductForWB(analysisInput);
     logger.logStep('AI_ANALYSIS', 'Анализ Replicate завершен успешно');
 
     // Шаг 2: Получение категорий WB
@@ -354,7 +355,13 @@ async function getWBCategories(apiToken: string) {
     return await response.json();
   } catch (error) {
     console.error('Ошибка получения категорий WB:', error);
-    return [];
+    // Если WB API недоступно, возвращаем дефолтную категорию
+    return [
+      {
+        objectId: 14727,
+        objectName: 'Товары для дома'
+      }
+    ];
   }
 }
 
