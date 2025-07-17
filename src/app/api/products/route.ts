@@ -4,7 +4,6 @@ import { PrismaClient } from '@prisma/client';
 import { toPrismaJson, toPrismaNullableJson } from '../../../../lib/utils/json';
 import { wbParser } from '../../../../lib/services/wbParser';
 import { uploadService } from '../../../../lib/services/uploadService';
-import { geminiService } from '../../../../lib/services/geminiService';
 import { WBCharacteristicsHelper, WB_CHARACTERISTICS_IDS } from '../../../../lib/utils/wbCharacteristics';
 import { ErrorHandler, ProcessLogger, ValidationUtils, ErrorCode } from '../../../../lib/utils/errorHandler';
 import { ProductStatus } from '../../../../lib/types/gemini';
@@ -124,7 +123,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Запускаем полную ИИ-обработку и автопубликацию
-    processProductWithGeminiAI(product.id, originalName, imageUrl, dimensions, price, referenceData, cabinet, autoPublish);
+    processProductWithReplicateAI(product.id, originalName, imageUrl, dimensions, price, referenceData, cabinet, autoPublish);
 
     return NextResponse.json({
       id: product.id,
@@ -193,8 +192,8 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Функция полной обработки продукта с Gemini AI и публикацией в WB
-async function processProductWithGeminiAI(
+// Функция полной обработки продукта с Replicate AI и публикацией в WB
+async function processProductWithReplicateAI(
   productId: string, 
   name: string, 
   imageUrl: string, 
@@ -207,10 +206,10 @@ async function processProductWithGeminiAI(
   const logger = new ProcessLogger(productId);
   
   try {
-    logger.logStep('START', 'Начинаем обработку продукта с помощью Gemini AI');
+    logger.logStep('START', 'Начинаем обработку продукта с помощью Replicate AI');
 
-    // Шаг 1: Полный анализ товара с помощью Gemini
-    logger.logStep('GEMINI_ANALYSIS', 'Запускаем анализ товара с помощью Gemini');
+    // Шаг 1: Полный анализ товара с помощью Replicate
+    logger.logStep('AI_ANALYSIS', 'Запускаем анализ товара с помощью Replicate');
     
     const analysisInput = {
       productName: name,
@@ -225,8 +224,8 @@ async function processProductWithGeminiAI(
       price: price
     };
 
-    const geminiAnalysis = await geminiService.analyzeProductForWB(analysisInput);
-    logger.logStep('GEMINI_ANALYSIS', 'Анализ Gemini завершен успешно');
+    const replicateAnalysis = await replicateService.analyzeProductForWB(analysisInput);
+    logger.logStep('AI_ANALYSIS', 'Анализ Replicate завершен успешно');
 
     // Шаг 2: Получение категорий WB
     logger.logStep('WB_CATEGORIES', 'Получаем категории Wildberries');
@@ -243,7 +242,7 @@ async function processProductWithGeminiAI(
 
     // Шаг 3: Поиск лучшей категории
     logger.logStep('CATEGORY_MATCHING', 'Подбираем лучшую категорию');
-    const bestCategory = await findBestCategoryWithGemini(geminiAnalysis, wbCategories);
+    const bestCategory = await findBestCategoryWithReplicate(replicateAnalysis, wbCategories);
     
     // Шаг 4: Получение характеристик для выбранной категории
     logger.logStep('CATEGORY_CHARACTERISTICS', 'Получаем характеристики категории');
@@ -251,16 +250,16 @@ async function processProductWithGeminiAI(
     
     // Шаг 5: Оптимизация характеристик
     logger.logStep('OPTIMIZE_CHARACTERISTICS', 'Оптимизируем характеристики');
-const optimizedCharacteristics = await optimizeCharacteristicsWithGemini(
-      geminiAnalysis.characteristics,
+const optimizedCharacteristics = await optimizeCharacteristicsWithReplicate(
+      replicateAnalysis.characteristics,
       categoryCharacteristics,
-      geminiAnalysis.visualAnalysis
+      replicateAnalysis.visualAnalysis
     );
 
     // Шаг 6: Подготовка данных для WB API
     logger.logStep('PREPARE_WB_DATA', 'Подготавливаем данные для WB API');
     const wbCardData = await prepareWBCardData(
-      geminiAnalysis,
+      replicateAnalysis,
       bestCategory,
       optimizedCharacteristics,
       productId
@@ -271,17 +270,17 @@ const optimizedCharacteristics = await optimizeCharacteristicsWithGemini(
     await prisma.product.update({
       where: { id: productId },
       data: {
-        generatedName: geminiAnalysis.seoTitle,
-        seoDescription: geminiAnalysis.seoDescription,
+        generatedName: replicateAnalysis.seoTitle,
+        seoDescription: replicateAnalysis.seoDescription,
         suggestedCategory: bestCategory.name,
-        colorAnalysis: geminiAnalysis.visualAnalysis.primaryColor,
+        colorAnalysis: replicateAnalysis.visualAnalysis.primaryColor,
         aiCharacteristics: toPrismaJson({
-          geminiAnalysis: geminiAnalysis,
+          geminiAnalysis: replicateAnalysis,
           wbData: wbCardData,
           category: bestCategory,
-          keywords: geminiAnalysis.suggestedKeywords,
-          competitiveAdvantages: geminiAnalysis.competitiveAdvantages,
-          marketingInsights: geminiAnalysis.marketingInsights
+          keywords: replicateAnalysis.suggestedKeywords,
+          competitiveAdvantages: replicateAnalysis.competitiveAdvantages,
+          marketingInsights: replicateAnalysis.marketingInsights
         }),
         status: autoPublish ? ProductStatus.PUBLISHING : ProductStatus.READY
       }
@@ -359,11 +358,11 @@ async function getWBCategories(apiToken: string) {
   }
 }
 
-// Поиск лучшей категории для товара с помощью Gemini
-async function findBestCategoryWithGemini(geminiAnalysis: any, wbCategories: any[]) {
+// Поиск лучшей категории для товара с помощью Replicate
+async function findBestCategoryWithReplicate(replicateAnalysis: any, wbCategories: any[]) {
   try {
-    // Используем рекомендованную категорию от Gemini для поиска в WB
-    const recommendedCategory = geminiAnalysis.wbCategory;
+    // Используем рекомендованную категорию от Replicate для поиска в WB
+    const recommendedCategory = replicateAnalysis.wbCategory;
     
     // Ищем наиболее подходящую категорию в списке WB
     const categoryKeywords = recommendedCategory.toLowerCase().split(' > ').join(' ').split(' ');
@@ -383,7 +382,7 @@ async function findBestCategoryWithGemini(geminiAnalysis: any, wbCategories: any
       }
       
       // Также учитываем тип товара из анализа
-      const productType = geminiAnalysis.visualAnalysis.productType.toLowerCase();
+      const productType = replicateAnalysis.visualAnalysis.productType.toLowerCase();
       if (categoryName.includes(productType)) {
         score += 2;
       }
@@ -445,8 +444,8 @@ async function getCategoryCharacteristics(categoryId: number, apiToken: string) 
   }
 }
 
-// Оптимизация характеристик от Gemini под требования WB API
-async function optimizeCharacteristicsWithGemini(
+// Оптимизация характеристик от Replicate под требования WB API
+async function optimizeCharacteristicsWithReplicate(
   geminiCharacteristics: any[],
   wbCharacteristics: any[],
   visualAnalysis: any
@@ -454,7 +453,7 @@ async function optimizeCharacteristicsWithGemini(
   try {
     const optimizedCharacteristics = [];
     
-    // Сопоставляем характеристики от Gemini с доступными в WB
+    // Сопоставляем характеристики от Replicate с доступными в WB
     for (const geminiChar of geminiCharacteristics) {
       const wbChar = wbCharacteristics.find(wb => wb.id === geminiChar.id);
       
@@ -490,9 +489,9 @@ async function optimizeCharacteristicsWithGemini(
 
 // Подготовка данных для WB API
 async function prepareWBCardData(
-  geminiAnalysis: any, 
-  category: any, 
-  characteristics: any[], 
+  replicateAnalysis: any,
+  category: any,
+  characteristics: any[],
   productId: string
 ) {
   // Форматируем характеристики для WB API
@@ -506,8 +505,8 @@ async function prepareWBCardData(
 
   return {
     vendorCode: `AI-${productId.substring(0, 8)}`,
-    title: geminiAnalysis.seoTitle,
-    description: geminiAnalysis.seoDescription,
+    title: replicateAnalysis.seoTitle,
+    description: replicateAnalysis.seoDescription,
     brand: WBCharacteristicsHelper.getCharacteristicById(
       optimizedCharacteristics, 
       WB_CHARACTERISTICS_IDS.BRAND
@@ -517,7 +516,7 @@ async function prepareWBCardData(
   };
 }
 
-// Дефолтные значения для характеристик с учетом анализа Gemini
+// Дефолтные значения для характеристик с учетом анализа Replicate
 function getDefaultCharacteristicValue(characteristic: any, visualAnalysis: any): string {
   // Используем утилиту для получения дефолтного значения
   const defaultValue = WBCharacteristicsHelper.getDefaultValue(characteristic.id);

@@ -17,6 +17,13 @@ export class WBParser {
     feedbacks: 'https://feedbacks1.wb.ru/feedbacks/v1'
   };
 
+  private readonly USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+  ];
+
   // Извлечение ID товара из URL Wildberries
   extractProductId(url: string): string | null {
     try {
@@ -167,17 +174,19 @@ export class WBParser {
 
   // Универсальный метод для авторизованных запросов
   private async makeAuthenticatedRequest(
-    url: string, 
-    token: string, 
-    method: string = 'GET', 
+    url: string,
+    token: string,
+    method: string = 'GET',
     body?: any,
     retries: number = 3
   ): Promise<Response> {
     const headers: HeadersInit = {
-      'Authorization': token, // JWT без Bearer префикса
+      'Authorization': token,
       'Content-Type': 'application/json',
-      'User-Agent': 'WB-Automation/1.0',
-      'Accept': 'application/json'
+      'User-Agent': this.USER_AGENTS[Math.floor(Math.random() * this.USER_AGENTS.length)],
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+      'Connection': 'keep-alive'
     };
 
     const options: RequestInit = {
@@ -185,6 +194,9 @@ export class WBParser {
       headers,
       ...(body && { body: JSON.stringify(body) })
     };
+
+    const delay = 300 + Math.random() * 700;
+    await this.sleep(delay);
 
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
@@ -217,15 +229,18 @@ export class WBParser {
 
   // Универсальный метод для публичных запросов
   private async makeRequest(url: string, options?: RequestInit): Promise<Response> {
-    const defaultOptions: RequestInit = {
-      headers: {
-        'User-Agent': 'WB-Automation/1.0',
-        'Accept': 'application/json'
-      },
-      ...options
+    const headers: Record<string, string> = {
+      'User-Agent': this.USER_AGENTS[Math.floor(Math.random() * this.USER_AGENTS.length)],
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+      'Connection': 'keep-alive',
+      ...(options?.headers as Record<string, string> ?? {})
     };
 
-    return fetch(url, defaultOptions);
+    const delay = 300 + Math.random() * 700;
+    await this.sleep(delay);
+
+    return fetch(url, { ...options, headers });
   }
 
   // Получение отзывов товара

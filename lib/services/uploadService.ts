@@ -1,12 +1,16 @@
 // lib/services/uploadService.ts
-
-import { writeFile } from 'fs/promises';
-import { join } from 'path';
+import { writeFile, mkdir } from 'fs/promises';
+import { join, resolve } from 'path';
 import { randomUUID } from 'crypto';
 
 export class UploadService {
-  private uploadDir = join(process.cwd(), 'public', 'uploads');
+  private uploadDir: string;
 
+  constructor() {
+    this.uploadDir = resolve(
+      process.env.UPLOAD_DIR || join(process.cwd(), 'public', 'uploads')
+    );
+  }
   // Загрузка файла в локальную папку
   async uploadFile(file: File): Promise<string> {
     try {
@@ -19,9 +23,11 @@ export class UploadService {
       const fileExtension = file.name.split('.').pop() || 'jpg';
       const fileName = `${randomUUID()}.${fileExtension}`;
       
+      // Создаем директорию, если она не существует
+      await mkdir(this.uploadDir, { recursive: true });
+
       // Создаем путь для сохранения
       const filePath = join(this.uploadDir, fileName);
-      
       // Получаем данные файла
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
