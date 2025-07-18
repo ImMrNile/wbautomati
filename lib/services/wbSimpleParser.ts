@@ -1,4 +1,6 @@
 // lib/services/wbSimpleParser.ts - ИСПРАВЛЕННАЯ ВЕРСИЯ
+import { WB_API_ENDPOINTS } from '../config/wbApiConfig';
+import { wbWebParser } from './wbWebParser';
 
 interface WBProductData {
   id: string;
@@ -55,6 +57,30 @@ export class WBSimpleParser {
       } catch (error) {
         console.warn(`⚠️ Метод ${index + 1} не сработал:`, error);
       }
+    }
+
+    // Попытка получить данные напрямую со страницы
+    try {
+      const webData = await wbWebParser.parseProduct(url);
+      if (webData) {
+        console.log('✅ Данные получены из веб-страницы');
+        return {
+          id: webData.id,
+          name: webData.name,
+          brand: webData.brand,
+          price: webData.price,
+          rating: 0,
+          reviewsCount: 0,
+          description: webData.description,
+          characteristics: [],
+          images: [],
+          category: 'Товары для дома',
+          availability: true,
+          vendorCode: webData.id,
+        } as WBProductData;
+      }
+    } catch (error) {
+      console.warn('⚠️ Веб парсер не сработал:', error);
     }
 
     throw new Error('Не удалось получить данные товара');
@@ -418,7 +444,7 @@ export class WBSimpleParser {
    */
   async getWBCategories(apiToken: string): Promise<any[]> {
     try {
-      const response = await fetch('https://suppliers-api.wildberries.ru/content/v2/object/all', {
+      const response = await fetch(WB_API_ENDPOINTS.getAllCategories, {
         headers: {
           'Authorization': `Bearer ${apiToken}`,
           'Content-Type': 'application/json'
@@ -449,7 +475,8 @@ export class WBSimpleParser {
    */
   async getCategoryCharacteristics(categoryId: number, apiToken: string): Promise<any[]> {
     try {
-      const response = await fetch(`https://suppliers-api.wildberries.ru/content/v2/object/charcs/${categoryId}`, {
+      const url = WB_API_ENDPOINTS.getCategoryCharacteristics(categoryId);
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${apiToken}`,
           'Content-Type': 'application/json'
@@ -475,7 +502,7 @@ export class WBSimpleParser {
     try {
       console.log('🚀 Создаем карточку товара в WB...');
 
-      const response = await fetch('https://suppliers-api.wildberries.ru/content/v2/cards/upload', {
+      const response = await fetch(WB_API_ENDPOINTS.uploadCard, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiToken}`,
