@@ -1,6 +1,7 @@
 // src/app/api/products/[id]/publish/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient, Cabinet } from '@prisma/client';
+import { WB_API_ENDPOINTS } from '../../../../../../lib/config/wbApiConfig';
 const prisma = new PrismaClient();
 
 
@@ -236,8 +237,7 @@ async function createWBCard(cardData: WBCreateCardRequest, apiToken: string): Pr
   error?: string;
 }> {
   try {
-    const response = await fetch('https://suppliers-api.wildberries.ru/content/v2/cards/upload', {
-      method: 'POST',
+  const response = await fetch(WB_API_ENDPOINTS.uploadCard, {  method: 'POST',
       headers: {
         'Authorization': apiToken,
         'Content-Type': 'application/json'
@@ -272,8 +272,7 @@ async function createWBCard(cardData: WBCreateCardRequest, apiToken: string): Pr
 // Получение ID категории по названию
 async function getCategoryIdByName(categoryName: string): Promise<number | null> {
   try {
-    const response = await fetch('https://suppliers-api.wildberries.ru/content/v2/object/all', {
-      method: 'GET',
+    const response = await fetch(WB_API_ENDPOINTS.getAllCategories, {     method: 'GET',
       headers: {
         'Content-Type': 'application/json'
       }

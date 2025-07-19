@@ -17,6 +17,8 @@ export default function ProductForm({ onSuccess }: ProductFormProps) {
   const [formData, setFormData] = useState({
     name: '',
     price: '',
+    // НОВОЕ ПОЛЕ для комплектации
+    packageContents: 'Кабель - 1 шт., упаковка',
     length: '',
     width: '',
     height: '',
@@ -44,7 +46,6 @@ export default function ProductForm({ onSuccess }: ProductFormProps) {
       const activeCabinets = data.cabinets.filter((c: Cabinet) => c.isActive);
       setCabinets(activeCabinets);
       
-      // Автоматически выбираем первый активный кабинет
       if (activeCabinets.length > 0) {
         setFormData(prev => ({ ...prev, cabinetId: activeCabinets[0].id }));
       }
@@ -57,8 +58,6 @@ export default function ProductForm({ onSuccess }: ProductFormProps) {
     const file = e.target.files?.[0];
     if (file) {
       setSelectedImage(file);
-      
-      // Создаем превью изображения
       const reader = new FileReader();
       reader.onload = (e) => {
         setImagePreview(e.target?.result as string);
@@ -83,33 +82,32 @@ export default function ProductForm({ onSuccess }: ProductFormProps) {
       setError('Введите название товара');
       return false;
     }
-    
     if (!selectedImage) {
       setError('Выберите изображение товара');
       return false;
     }
-    
     if (!formData.price || parseFloat(formData.price) <= 0) {
       setError('Введите корректную цену');
       return false;
     }
-    
+    // Проверка нового поля
+    if (!formData.packageContents.trim()) {
+      setError('Укажите комплектацию товара');
+      return false;
+    }
     if (!formData.length || !formData.width || !formData.height || !formData.weight) {
       setError('Заполните все размеры и вес товара');
       return false;
     }
-    
     if (!formData.cabinetId) {
       setError('Выберите кабинет для публикации');
       return false;
     }
-
     return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!validateForm()) return;
     
     setIsSubmitting(true);
@@ -119,21 +117,20 @@ export default function ProductForm({ onSuccess }: ProductFormProps) {
     try {
       const submitFormData = new FormData();
       
-      // Добавляем все данные формы
+      // Добавляем все данные, включая новое поле
       submitFormData.append('name', formData.name);
       submitFormData.append('price', formData.price);
+      submitFormData.append('packageContents', formData.packageContents); // Добавляем комплектацию
       submitFormData.append('cabinetId', formData.cabinetId);
       submitFormData.append('autoPublish', formData.autoPublish.toString());
       
       if (formData.referenceUrl) {
         submitFormData.append('referenceUrl', formData.referenceUrl);
       }
-      
       if (selectedImage) {
         submitFormData.append('image', selectedImage);
       }
       
-      // Добавляем размеры как JSON
       const dimensions = {
         length: parseFloat(formData.length),
         width: parseFloat(formData.width),
@@ -152,14 +149,15 @@ export default function ProductForm({ onSuccess }: ProductFormProps) {
       if (response.ok) {
         setSuccess(
           formData.autoPublish 
-            ? 'Товар создан и отправлен на автопубликацию в Wildberries!' 
+            ? 'Товар создан и отправлен на автопубликацию!' 
             : 'Товар создан и отправлен на обработку ИИ!'
         );
         
-        // Очищаем форму
+        // Очистка формы
         setFormData({
           name: '',
           price: '',
+          packageContents: 'Кабель - 1 шт., упаковка',
           length: '',
           width: '',
           height: '',
@@ -170,10 +168,7 @@ export default function ProductForm({ onSuccess }: ProductFormProps) {
         });
         setSelectedImage(null);
         setImagePreview('');
-        
         onSuccess();
-        
-        // Скрываем сообщение об успехе через 3 секунды
         setTimeout(() => setSuccess(''), 3000);
         
       } else {
@@ -190,7 +185,6 @@ export default function ProductForm({ onSuccess }: ProductFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Основная информация */}
       <div className="space-y-4">
         <h3 className="text-lg font-medium">Основная информация</h3>
         
@@ -205,8 +199,22 @@ export default function ProductForm({ onSuccess }: ProductFormProps) {
             placeholder="Введите название товара"
             required
           />
+        </div>
+
+        {/* НОВЫЙ БЛОК: КОМПЛЕКТАЦИЯ */}
+        <div className="form-group">
+          <label className="form-label">Комплектация *</label>
+          <input
+            type="text"
+            name="packageContents"
+            value={formData.packageContents}
+            onChange={handleInputChange}
+            className="form-input"
+            placeholder="Пример: Кабель - 1 шт., упаковка"
+            required
+          />
           <div className="form-hint">
-            Краткое описание товара (ИИ создаст SEO-оптимизированное название)
+            Что именно получит покупатель? Это обязательное поле для Wildberries.
           </div>
         </div>
 
@@ -225,11 +233,10 @@ export default function ProductForm({ onSuccess }: ProductFormProps) {
           />
         </div>
       </div>
-
-      {/* Изображение товара */}
+      
+      {/* Остальная часть формы без изменений... */}
       <div className="space-y-4">
         <h3 className="text-lg font-medium">Изображение товара</h3>
-        
         <div className="form-group">
           <label className="form-label">Фото товара *</label>
           <div className="flex items-start gap-4">
@@ -241,197 +248,61 @@ export default function ProductForm({ onSuccess }: ProductFormProps) {
                 className="form-input"
                 required
               />
-              <div className="form-hint">
-                Загрузите качественное фото товара. ИИ проанализирует изображение и определит характеристики.
-              </div>
             </div>
-            
             {imagePreview && (
               <div className="w-24 h-24 border rounded-lg overflow-hidden flex-shrink-0">
-                <img 
-                  src={imagePreview} 
-                  alt="Preview" 
-                  className="w-full h-full object-cover"
-                />
+                <img src={imagePreview} alt="Preview" className="w-full h-full object-cover"/>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Размеры и вес */}
       <div className="space-y-4">
         <h3 className="text-lg font-medium">Размеры и вес</h3>
-        
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="form-group">
-            <label className="form-label">Длина (см) *</label>
-            <input
-              type="number"
-              name="length"
-              value={formData.length}
-              onChange={handleInputChange}
-              className="form-input"
-              placeholder="0"
-              min="0.1"
-              step="0.1"
-              required
-            />
-          </div>
-          
-          <div className="form-group">
-            <label className="form-label">Ширина (см) *</label>
-            <input
-              type="number"
-              name="width"
-              value={formData.width}
-              onChange={handleInputChange}
-              className="form-input"
-              placeholder="0"
-              min="0.1"
-              step="0.1"
-              required
-            />
-          </div>
-          
-          <div className="form-group">
-            <label className="form-label">Высота (см) *</label>
-            <input
-              type="number"
-              name="height"
-              value={formData.height}
-              onChange={handleInputChange}
-              className="form-input"
-              placeholder="0"
-              min="0.1"
-              step="0.1"
-              required
-            />
-          </div>
-          
-          <div className="form-group">
-            <label className="form-label">Вес (кг) *</label>
-            <input
-              type="number"
-              name="weight"
-              value={formData.weight}
-              onChange={handleInputChange}
-              className="form-input"
-              placeholder="0"
-              min="0.001"
-              step="0.001"
-              required
-            />
-          </div>
+          <div className="form-group"><label className="form-label">Длина (см) *</label><input type="number" name="length" value={formData.length} onChange={handleInputChange} className="form-input" placeholder="0" min="0.1" step="0.1" required /></div>
+          <div className="form-group"><label className="form-label">Ширина (см) *</label><input type="number" name="width" value={formData.width} onChange={handleInputChange} className="form-input" placeholder="0" min="0.1" step="0.1" required /></div>
+          <div className="form-group"><label className="form-label">Высота (см) *</label><input type="number" name="height" value={formData.height} onChange={handleInputChange} className="form-input" placeholder="0" min="0.1" step="0.1" required /></div>
+          <div className="form-group"><label className="form-label">Вес (кг) *</label><input type="number" name="weight" value={formData.weight} onChange={handleInputChange} className="form-input" placeholder="0" min="0.001" step="0.001" required /></div>
         </div>
       </div>
 
-      {/* Аналог с Wildberries */}
       <div className="space-y-4">
         <h3 className="text-lg font-medium">Аналог с Wildberries (опционально)</h3>
-        
         <div className="form-group">
           <label className="form-label">Ссылка на похожий товар</label>
-          <input
-            type="url"
-            name="referenceUrl"
-            value={formData.referenceUrl}
-            onChange={handleInputChange}
-            className="form-input"
-            placeholder="https://www.wildberries.ru/catalog/123456/detail.aspx"
-          />
-          <div className="form-hint">
-            ИИ проанализирует аналогичный товар и использует успешные паттерны для создания вашей карточки
-          </div>
+          <input type="url" name="referenceUrl" value={formData.referenceUrl} onChange={handleInputChange} className="form-input" placeholder="https://www.wildberries.ru/catalog/123456/detail.aspx" />
         </div>
       </div>
 
-      {/* Настройки публикации */}
       <div className="space-y-4">
         <h3 className="text-lg font-medium">Настройки публикации</h3>
-        
         <div className="form-group">
           <label className="form-label">Кабинет Wildberries *</label>
-          <select
-            name="cabinetId"
-            value={formData.cabinetId}
-            onChange={handleInputChange}
-            className="form-input"
-            required
-          >
+          <select name="cabinetId" value={formData.cabinetId} onChange={handleInputChange} className="form-input" required >
             <option value="">Выберите кабинет</option>
-            {cabinets.map(cabinet => (
-              <option key={cabinet.id} value={cabinet.id}>
-                {cabinet.name}
-              </option>
-            ))}
+            {cabinets.map(cabinet => (<option key={cabinet.id} value={cabinet.id}>{cabinet.name}</option>))}
           </select>
         </div>
-
         <div className="form-group">
           <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              name="autoPublish"
-              checked={formData.autoPublish}
-              onChange={handleInputChange}
-              className="w-4 h-4 text-blue-600"
-            />
+            <input type="checkbox" name="autoPublish" checked={formData.autoPublish} onChange={handleInputChange} className="w-4 h-4 text-blue-600" />
             <span className="text-sm font-medium">Автоматически опубликовать в Wildberries</span>
           </label>
-          <div className="form-hint">
-            Если включено, товар будет автоматически опубликован после обработки ИИ
-          </div>
         </div>
       </div>
 
-      {/* Сообщения */}
-      {error && (
-        <div className="alert alert-error">
-          <AlertCircle size={16} />
-          {error}
-        </div>
-      )}
+      {error && (<div className="alert alert-error"><AlertCircle size={16} />{error}</div>)}
+      {success && (<div className="alert alert-success"><CheckCircle size={16} />{success}</div>)}
 
-      {success && (
-        <div className="alert alert-success">
-          <CheckCircle size={16} />
-          {success}
-        </div>
-      )}
-
-      {/* Кнопка отправки */}
       <div className="flex justify-end">
-        <button
-          type="submit"
-          disabled={isSubmitting || cabinets.length === 0}
-          className="btn-primary"
-        >
-          {isSubmitting ? (
-            <>
-              <div className="spinner mr-2" />
-              Обработка...
-            </>
-          ) : formData.autoPublish ? (
-            <>
-              <Zap size={16} />
-              Создать и опубликовать
-            </>
-          ) : (
-            <>
-              <Package size={16} />
-              Создать товар
-            </>
-          )}
+        <button type="submit" disabled={isSubmitting || cabinets.length === 0} className="btn-primary">
+          {isSubmitting ? (<><div className="spinner mr-2" />Обработка...</>) : formData.autoPublish ? (<><Zap size={16} />Создать и опубликовать</>) : (<><Package size={16} />Создать товар</>)}
         </button>
       </div>
 
-      {cabinets.length === 0 && (
-        <div className="alert alert-warning">
-          <AlertCircle size={16} />
-          Добавьте хотя бы один активный кабинет в разделе "Кабинеты WB" для создания товаров
-        </div>
-      )}
+      {cabinets.length === 0 && (<div className="alert alert-warning"><AlertCircle size={16} />Добавьте хотя бы один активный кабинет</div>)}
     </form>
   );
 }

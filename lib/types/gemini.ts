@@ -1,9 +1,8 @@
-// lib/types/gemini.ts - ОБНОВЛЕННЫЕ ТИПЫ
-// Экспорт всех типов для удобства
-export * from './error';
+// lib/types/gemini.ts - ИСПРАВЛЕННАЯ ВЕРСИЯ БЕЗ НЕПРАВИЛЬНЫХ ИМПОРТОВ
 
-// Существующие типы сохраняем без изменений
+// Статусы продукта (используем строки для совместимости с Prisma schema)
 export enum ProductStatus {
+  PENDING = 'PENDING',
   PROCESSING = 'PROCESSING',
   READY = 'READY',
   PUBLISHING = 'PUBLISHING',
@@ -11,6 +10,7 @@ export enum ProductStatus {
   ERROR = 'ERROR'
 }
 
+// Основные интерфейсы для продукта
 export interface ProductAnalysisResult {
   visualAnalysis: {
     productType: string;
@@ -23,7 +23,7 @@ export interface ProductAnalysisResult {
   };
   seoTitle: string;
   seoDescription: string;
-  characteristics: { id: number; value: string; }[];
+  characteristics: Array<{ id: number; value: string }>;
   suggestedKeywords: string[];
   competitiveAdvantages: string[];
   wbCategory: string;
@@ -38,11 +38,14 @@ export interface ProductAnalysisResult {
 export interface WBCategory {
   id: number;
   name: string;
+  objectID?: number;    // Для совместимости с WB API
+  objectName?: string;  // Для совместимости с WB API
 }
 
 export interface ProductCharacteristic {
-  id: number;
-  value: string;
+  id: number | string;
+  name?: string;
+  value: string | number;
 }
 
 export interface WBCardData {
@@ -57,24 +60,78 @@ export interface WBCardData {
   }>;
 }
 
-// НОВЫЕ ТИПЫ для улучшенного парсера
-
+// Типы для парсера WB
 export interface WBProductData {
   id: string;
   name: string;
   brand: string;
   price: number;
-  rating: number;
-  reviewsCount: number;
-  description: string;
-  characteristics: Array<{ name: string; value: string }>;
-  images: string[];
-  category: string;
-  availability: boolean;
-  vendorCode: string;
+  rating?: number;
+  reviewsCount?: number;
+  description?: string;
+  characteristics?: Array<{ name: string; value: string }>;
+  images?: string[];
+  category?: string;
+  categoryId?: number;
+  availability?: boolean;
+  vendorCode?: string;
   supplierId?: string;
 }
 
+// Типы для размеров продукта
+export interface ProductDimensions {
+  length?: number | string;
+  width?: number | string;
+  height?: number | string;
+  weight?: number | string;
+}
+
+// Запрос для анализа Gemini
+export interface GeminiAnalysisRequest {
+  productName: string;
+  images: string[];
+  referenceData?: WBProductData;
+  dimensions?: ProductDimensions;
+  price?: number;
+}
+
+// API ответы WB
+export interface WBApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  nmId?: number;
+}
+
+export interface WBCategoryResponse {
+  objectID: number;
+  objectName: string;
+  parentID?: number;
+  isVisible?: boolean;
+}
+
+export interface WBCharacteristicResponse {
+  charcID: number;
+  charcName: string;
+  required: boolean;
+  unitName?: string;
+  maxCount?: number;
+  charcType?: 'string' | 'number' | 'boolean' | 'list';
+  dictionary?: Array<{
+    key: string;
+    value: string;
+  }>;
+}
+
+export interface WBCreateCardResponse {
+  nmId?: number;
+  nmID?: number;  // WB может возвращать разные названия
+  error?: string;
+  warnings?: string[];
+  vendorCode?: string;
+}
+
+// Конфигурация парсера
 export interface EnhancedParserConfig {
   useProxy?: boolean;
   proxyUrl?: string;
@@ -95,6 +152,7 @@ export interface ParseResult {
   retryCount: number;
 }
 
+// Качество референсных данных
 export interface ReferenceDataQuality {
   score: number;
   factors: {
@@ -108,6 +166,7 @@ export interface ReferenceDataQuality {
   };
 }
 
+// Расширенный анализ продукта
 export interface EnhancedProductAnalysis extends ProductAnalysisResult {
   referenceData?: WBProductData;
   referenceQuality?: ReferenceDataQuality;
@@ -117,41 +176,7 @@ export interface EnhancedProductAnalysis extends ProductAnalysisResult {
   characteristicsEnhanced: boolean;
 }
 
-// Типы для API ответов WB
-export interface WBApiResponse<T = any> {
-  data: T;
-  error?: string;
-  statusCode?: number;
-}
-
-export interface WBCategoryResponse {
-  objectID: number;
-  objectName: string;
-  parentID?: number;
-  isVisible: boolean;
-}
-
-export interface WBCharacteristicResponse {
-  charcID: number;
-  charcName: string;
-  required: boolean;
-  unitName?: string;
-  maxCount?: number;
-  charcType: 'string' | 'number' | 'boolean' | 'list';
-  dictionary?: Array<{
-    key: string;
-    value: string;
-  }>;
-}
-
-export interface WBCreateCardResponse {
-  nmId?: number;
-  error?: string;
-  warnings?: string[];
-  vendorCode?: string;
-}
-
-// Типы для системы очередей и обработки
+// Типы для очередей и обработки
 export interface ProcessingJob {
   id: string;
   productId: string;
@@ -167,6 +192,7 @@ export interface ProcessingJob {
   error?: string;
 }
 
+// Метрики парсинга
 export interface ParsingMetrics {
   totalRequests: number;
   successfulRequests: number;
@@ -214,7 +240,7 @@ export interface ProductionConfig {
   };
 }
 
-// Типы для кэширования
+// Кэширование
 export interface CacheEntry<T = any> {
   data: T;
   timestamp: number;
@@ -231,7 +257,7 @@ export interface CacheStats {
   newestEntry: number;
 }
 
-// Типы для мониторинга
+// Мониторинг здоровья системы
 export interface HealthStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
   timestamp: number;
@@ -251,7 +277,7 @@ export interface ServiceHealth {
   error?: string;
 }
 
-// Типы для аналитики
+// Аналитика продукта
 export interface ProductAnalytics {
   productId: string;
   views: number;
@@ -271,17 +297,7 @@ export interface ProductAnalytics {
   };
 }
 
-
-// Дополнительные утилитарные типы
-export type DeepPartial<T> = {
-  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
-};
-
-export type RequiredFields<T, K extends keyof T> = T & Required<Pick<T, K>>;
-
-export type OptionalFields<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
-
-// Типы для валидации
+// Валидация
 export interface ValidationResult {
   valid: boolean;
   errors: string[];
@@ -299,7 +315,7 @@ export interface ValidationRule<T = any> {
   pattern?: RegExp;
 }
 
-// Типы для API интеграций
+// API интеграции
 export interface ApiIntegration {
   name: string;
   baseUrl: string;
@@ -321,7 +337,7 @@ export interface ApiResponse<T = any> {
   responseTime: number;
 }
 
-// Типы для обработки изображений
+// Обработка изображений
 export interface ImageProcessingOptions {
   maxWidth?: number;
   maxHeight?: number;
@@ -339,3 +355,39 @@ export interface ProcessedImage {
   format: string;
   optimized: boolean;
 }
+
+// Утилитарные типы
+export type DeepPartial<T> = {
+  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
+};
+
+export type RequiredFields<T, K extends keyof T> = T & Required<Pick<T, K>>;
+
+export type OptionalFields<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
+
+// Маппинги категорий и характеристик
+export interface CategoryMapping {
+  [key: string]: {
+    id: number;
+    name: string;
+  };
+}
+
+export interface CharacteristicMapping {
+  [key: string]: number;
+}
+
+// Константы для дефолтных значений
+export const WB_DEFAULT_VALUES = {
+  BRAND: 'NoName',
+  COUNTRY: 'Россия',
+  COLOR: 'не указан',
+  CATEGORY_ID: 14727, // Товары для дома
+} as const;
+
+export const WB_VALIDATION_RULES = {
+  TITLE_MAX_LENGTH: 60,
+  DESCRIPTION_MAX_LENGTH: 1000,
+  VENDOR_CODE_MAX_LENGTH: 75,
+  BRAND_MAX_LENGTH: 50,
+} as const;
