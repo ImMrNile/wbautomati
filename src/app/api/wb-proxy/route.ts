@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 const WB_API_CONFIG = {
   BASE_URLS: {
     CONTENT: 'https://content-api.wildberries.ru',
-    MARKETPLACE: 'https://marketplace-api.wildberries.ru', 
+    MARKETPLACE: 'https://marketplace-api.wildberries.ru',
     STATISTICS: 'https://statistics-api.wildberries.ru',
     DISCOUNTS_PRICES: 'https://discounts-prices-api.wildberries.ru'
   },
@@ -46,7 +46,7 @@ const rateLimiter = new Map<string, { count: number; resetTime: number }>();
 function checkRateLimit(clientId: string): boolean {
   const now = Date.now();
   const limit = rateLimiter.get(clientId);
-  
+
   if (!limit || now > limit.resetTime) {
     rateLimiter.set(clientId, {
       count: 1,
@@ -54,11 +54,11 @@ function checkRateLimit(clientId: string): boolean {
     });
     return true;
   }
-  
+
   if (limit.count >= WB_API_CONFIG.RATE_LIMITS.REQUESTS_PER_MINUTE) {
     return false;
   }
-  
+
   limit.count++;
   return true;
 }
@@ -70,12 +70,12 @@ function getCacheKey(url: string, method: string, body?: string): string {
 function getFromCache(key: string): any | null {
   const cached = cache.get(key);
   if (!cached) return null;
-  
+
   if (Date.now() > cached.timestamp + cached.ttl) {
     cache.delete(key);
     return null;
   }
-  
+
   return cached.data;
 }
 
@@ -107,7 +107,7 @@ function getCorrectDomain(endpoint: string): string {
   } else if (endpoint.includes('/discounts/') || endpoint.includes('/prices/')) {
     return WB_API_CONFIG.BASE_URLS.DISCOUNTS_PRICES;
   }
-  
+
   // По умолчанию используем content API
   return WB_API_CONFIG.BASE_URLS.CONTENT;
 }
@@ -118,7 +118,7 @@ function getCorrectDomain(endpoint: string): string {
 async function getCategoriesPublic(): Promise<any> {
   try {
     console.log('🔄 Попытка получения категорий через публичный API...');
-    
+
     const response = await fetch(FALLBACK_CONFIG.PUBLIC_ENDPOINTS.CATEGORIES, {
       method: 'GET',
       headers: {
@@ -133,12 +133,12 @@ async function getCategoriesPublic(): Promise<any> {
     if (response.ok) {
       const data = await response.json();
       console.log('✅ Категории получены через публичный API');
-      
+
       // Конвертируем в формат WB API
       const convertedData = convertPublicCategoriesToWbFormat(data);
       return { data: convertedData };
     }
-    
+
     throw new Error(`Public API ответил с кодом ${response.status}`);
   } catch (error) {
     console.error('❌ Ошибка получения категорий через публичный API:', error);
@@ -151,10 +151,10 @@ async function getCategoriesPublic(): Promise<any> {
  */
 function convertPublicCategoriesToWbFormat(publicData: any): any[] {
   const categories: any[] = [];
-  
+
   function extractCategories(items: any[], parentId?: number) {
     if (!Array.isArray(items)) return;
-    
+
     items.forEach((item, index) => {
       if (item.name && item.id) {
         categories.push({
@@ -163,7 +163,7 @@ function convertPublicCategoriesToWbFormat(publicData: any): any[] {
           parentID: parentId || null,
           isVisible: true
         });
-        
+
         // Рекурсивно обрабатываем дочерние элементы
         if (item.children && Array.isArray(item.children)) {
           extractCategories(item.children, item.id || (parentId ? parentId * 1000 + index : index + 1));
@@ -171,7 +171,7 @@ function convertPublicCategoriesToWbFormat(publicData: any): any[] {
       }
     });
   }
-  
+
   try {
     if (publicData && publicData.menu) {
       extractCategories(publicData.menu);
@@ -190,7 +190,7 @@ function convertPublicCategoriesToWbFormat(publicData: any): any[] {
   } catch (error) {
     console.error('Ошибка конвертации категорий:', error);
   }
-  
+
   return categories;
 }
 
@@ -201,14 +201,14 @@ function validateWBToken(token: string): boolean {
   if (!token || typeof token !== 'string') {
     return false;
   }
-  
+
   // Проверяем формат JWT токена (3 сегмента разделенных точками)
   const segments = token.split('.');
   if (segments.length !== 3) {
     console.error(`❌ Токен содержит ${segments.length} сегментов вместо 3`);
     return false;
   }
-  
+
   // Проверяем что каждый сегмент является валидным base64
   try {
     segments.forEach((segment, index) => {
@@ -249,11 +249,9 @@ export async function POST(request: NextRequest) {
 
     // Специальная обработка для получения категорий
     const isCategoriesRequest = endpoint.includes('/object/all') || endpoint.includes('/object/parent');
-    
+
     if (isCategoriesRequest) {
-      // Проверяем кеш для категорий
       const cacheKey = getCacheKey(endpoint, method, requestData ? JSON.stringify(requestData) : undefined);
-      
       if (useCache) {
         const cached = getFromCache(cacheKey);
         if (cached) {
@@ -266,27 +264,28 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Сначала пробуем через публичный API
-      try {
-        const publicResult = await getCategoriesPublic();
-        
-        // Кешируем результат
-        setCache(cacheKey, publicResult, 24 * 60 * 60 * 1000); // 24 часа для категорий
-        
-        return NextResponse.json({
-          success: true,
-          data: publicResult,
-          fromCache: false,
-          source: 'public_api'
-        });
-      } catch (publicError) {
-        console.warn('⚠️ Публичный API недоступен, пробуем официальный API');
-        
-        // Если публичный API не работает, пробуем официальный
-        if (!apiToken) {
+      // Если токен предоставлен, используем официальное API
+      if (apiToken) {
+        console.log('🔑 Используем официальный API с токеном для получения категорий.');
+      } else {
+        // Иначе, пробуем через публичный API
+        try {
+          console.log('🌍 Пробуем получить категории через публичный API.');
+          const publicResult = await getCategoriesPublic();
+
+          setCache(cacheKey, publicResult, 24 * 60 * 60 * 1000); // 24 часа для категорий
+
+          return NextResponse.json({
+            success: true,
+            data: publicResult,
+            fromCache: false,
+            source: 'public_api'
+          });
+        } catch (publicError) {
+          console.warn('⚠️ Публичный API недоступен. Для получения категорий требуется API токен.');
           return NextResponse.json({
             success: false,
-            error: 'Публичный API недоступен и не указан API токен для официального API'
+            error: 'Не удалось получить категории через публичный API, и API токен не был предоставлен.'
           }, { status: 400 });
         }
       }
@@ -302,7 +301,7 @@ export async function POST(request: NextRequest) {
 
     // Проверяем кеш для обычных запросов
     const cacheKey = getCacheKey(endpoint, method, requestData ? JSON.stringify(requestData) : undefined);
-    
+
     if (method === 'GET' && useCache && apiToken) {
       const cached = getFromCache(cacheKey);
       if (cached) {
@@ -349,17 +348,17 @@ export async function POST(request: NextRequest) {
     // Выполняем запрос к WB API с повторными попытками
     let lastError: Error | null = null;
     const maxRetries = 3;
-    
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const response = await fetch(fullUrl, fetchOptions);
-        
+
         console.log(`📡 Ответ WB API: ${response.status} ${response.statusText}`);
 
         // Обрабатываем ответ
         let responseData;
         const contentType = response.headers.get('content-type');
-        
+
         if (contentType && contentType.includes('application/json')) {
           responseData = await response.json();
         } else {
@@ -369,18 +368,18 @@ export async function POST(request: NextRequest) {
         // Проверяем на ошибки
         if (!response.ok) {
           console.error(`❌ Ошибка WB API (${response.status}):`, responseData);
-          
+
           // Для ошибки 401 с токеном пробуем без токена (для публичных endpoints)
           if (response.status === 401 && apiToken && isCategoriesRequest) {
             console.log('🔄 Повтор запроса без токена...');
             const headersWithoutAuth = { ...headers };
             delete headersWithoutAuth['Authorization'];
-            
+
             const retryResponse = await fetch(fullUrl, {
               ...fetchOptions,
               headers: headersWithoutAuth
             });
-            
+
             if (retryResponse.ok) {
               const retryData = await retryResponse.json();
               return NextResponse.json({
@@ -391,7 +390,7 @@ export async function POST(request: NextRequest) {
               });
             }
           }
-          
+
           return NextResponse.json({
             success: false,
             error: `WB API Error ${response.status}: ${typeof responseData === 'string' ? responseData : JSON.stringify(responseData)}`,
@@ -415,7 +414,7 @@ export async function POST(request: NextRequest) {
       } catch (error: any) {
         lastError = error;
         console.error(`❌ Попытка ${attempt}/${maxRetries} неудачна:`, error.message);
-        
+
         if (attempt < maxRetries) {
           const delay = Math.pow(2, attempt) * 1000; // Экспоненциальная задержка
           console.log(`⏳ Ожидание ${delay}мс перед повтором...`);
@@ -428,7 +427,7 @@ export async function POST(request: NextRequest) {
     if (isCategoriesRequest) {
       console.log('🔄 Возвращаем fallback категории...');
       const fallbackCategories = convertPublicCategoriesToWbFormat({});
-      
+
       return NextResponse.json({
         success: true,
         data: { data: fallbackCategories },
@@ -440,19 +439,19 @@ export async function POST(request: NextRequest) {
     // Обработка специфичных ошибок
     if (lastError?.name === 'TimeoutError') {
       return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Таймаут запроса к WB API. Попробуйте позже.' 
+        {
+          success: false,
+          error: 'Таймаут запроса к WB API. Попробуйте позже.'
         },
         { status: 408 }
       );
     }
 
     return NextResponse.json(
-      { 
-        success: false, 
-        error: 'Ошибка соединения с WB API', 
-        details: lastError?.message 
+      {
+        success: false,
+        error: 'Ошибка соединения с WB API',
+        details: lastError?.message
       },
       { status: 500 }
     );
@@ -460,10 +459,10 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('❌ Ошибка прокси-запроса:', error);
     return NextResponse.json(
-      { 
-        success: false, 
-        error: 'Ошибка обработки запроса', 
-        details: error.message 
+      {
+        success: false,
+        error: 'Ошибка обработки запроса',
+        details: error.message
       },
       { status: 500 }
     );

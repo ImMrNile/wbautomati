@@ -77,7 +77,7 @@ export const CategorySelector = ({ apiToken, onCategorySelect }) => {
     const fetchTree = async () => {
       if (!apiToken) {
         setLoading(false);
-        setError("API токен не предоставлен.");
+        setError("API токен не предоставлен. Пожалуйста, добавьте токен в настройках кабинета.");
         return;
       }
       try {
@@ -91,10 +91,10 @@ export const CategorySelector = ({ apiToken, onCategorySelect }) => {
         if (result.success) {
           setTree(result.data);
         } else {
-          throw new Error(result.error);
+          throw new Error(result.error || 'Неизвестная ошибка при загрузке категорий.');
         }
       } catch (e: any) {
-        setError(e.message);
+        setError(`Не удалось загрузить категории: ${e.message}. Проверьте ваш API токен и попробуйте снова.`);
       } finally {
         setLoading(false);
       }
