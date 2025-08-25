@@ -1,27 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Settings, Trash2, Wifi, WifiOff, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
-
-interface Cabinet {
-  id: string;
-  name: string;
-  description?: string;
-  isActive: boolean;
-  createdAt: string;
-  apiToken?: string; // Добавляем опциональное поле для токена (может быть замаскировано)
-  stats: {
-    totalProducts: number;
-    publishedProducts: number;
-    processingProducts: number;
-  };
-}
+import { Cabinet } from '../../../lib/types/cabinet';
+import { useAuth } from './AuthProvider';
+import { Loader2, Plus, Settings, Trash2, Eye, EyeOff, TestTube, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
 
 interface CabinetManagerProps {
   onUpdate: () => void;
 }
 
 export default function CabinetManager({ onUpdate }: CabinetManagerProps) {
+  const { user, loading: authLoading } = useAuth();
   const [cabinets, setCabinets] = useState<Cabinet[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -32,7 +21,7 @@ export default function CabinetManager({ onUpdate }: CabinetManagerProps) {
   const [formData, setFormData] = useState({
     name: '',
     apiToken: '',
-    description: ''
+    description: '',
   });
   const [testResults, setTestResults] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -41,16 +30,42 @@ export default function CabinetManager({ onUpdate }: CabinetManagerProps) {
   const [success, setSuccess] = useState('');
 
   useEffect(() => {
-    loadCabinets();
-  }, []);
+    console.log('🔍 [CabinetManager] useEffect сработал:', { authLoading, user: user?.email });
+    if (!authLoading && user) {
+      console.log('🔍 [CabinetManager] Загружаем кабинеты для пользователя:', user.email);
+      loadCabinets();
+    } else if (authLoading) {
+      console.log('🔍 [CabinetManager] Ожидаем загрузки авторизации...');
+    } else if (!user) {
+      console.log('🔍 [CabinetManager] Пользователь не найден');
+    }
+  }, [authLoading, user]);
 
   const loadCabinets = async () => {
+    console.log('🔍 [CabinetManager] loadCabinets вызван');
+    if (authLoading || !user) {
+      console.log('🔍 [CabinetManager] loadCabinets пропущен:', { authLoading, hasUser: !!user });
+      return;
+    }
+
     try {
+      console.log('🔍 [CabinetManager] Отправляем запрос к /api/cabinets');
+      setLoading(true);
       const response = await fetch('/api/cabinets');
+      
+      console.log('🔍 [CabinetManager] Ответ получен:', { status: response.status, ok: response.ok });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const data = await response.json();
+      console.log('🔍 [CabinetManager] Данные получены:', { success: data.success, cabinetsCount: data.cabinets?.length });
+      
       setCabinets(data.cabinets || []);
-    } catch (error) {
-      console.error('Ошибка загрузки кабинетов:', error);
+    } catch (e) {
+      console.error('❌ [CabinetManager] Ошибка загрузки кабинетов:', e);
+      setError(`Ошибка загрузки кабинетов: ${e instanceof Error ? e.message : 'Неизвестная ошибка'}`);
     } finally {
       setLoading(false);
     }
@@ -58,13 +73,13 @@ export default function CabinetManager({ onUpdate }: CabinetManagerProps) {
 
   const testConnection = async (token?: string) => {
     const testToken = token || formData.apiToken;
-    
+
     if (!testToken || !testToken.trim()) {
-      setError('Введите API токен для тестирования');
+      setError('Введите API‑токен для тестирования');
       return;
     }
 
-    // Если токен замаскирован (содержит *), не можем его тестировать
+    // Если токен замаскирован (содержит *), не можем тестировать
     if (testToken.includes('*')) {
       setError('Не могу протестировать замаскированный токен. Введите полный токен.');
       return;
@@ -77,22 +92,21 @@ export default function CabinetManager({ onUpdate }: CabinetManagerProps) {
       const response = await fetch('/api/wb/test-connection', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ token: testToken })
+        body: JSON.stringify({ token: testToken }),
       });
 
       const data = await response.json();
-      
+
       if (response.ok) {
         setTestResults(data.results);
         setShowTestModal(true);
       } else {
         setError(data.error || 'Ошибка тестирования соединения');
       }
-
-    } catch (error) {
-      console.error('Ошибка тестирования:', error);
+    } catch (e) {
+      console.error('Ошибка тестирования:', e);
       setError('Ошибка при тестировании соединения');
     } finally {
       setIsTesting(false);
@@ -101,7 +115,7 @@ export default function CabinetManager({ onUpdate }: CabinetManagerProps) {
 
   const handleSubmit = async (skipValidation = false) => {
     if (!formData.name.trim() || !formData.apiToken.trim()) {
-      setError('Заполните название и API токен');
+      setError('Заполните название и API‑токен');
       return;
     }
 
@@ -113,12 +127,12 @@ export default function CabinetManager({ onUpdate }: CabinetManagerProps) {
       const response = await fetch('/api/cabinets', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           ...formData,
-          skipValidation
-        })
+          skipValidation,
+        }),
       });
 
       const data = await response.json();
@@ -129,19 +143,15 @@ export default function CabinetManager({ onUpdate }: CabinetManagerProps) {
         setShowAddForm(false);
         loadCabinets();
         onUpdate();
-        
+
         setTimeout(() => setSuccess(''), 3000);
       } else {
         setError(data.error);
-        
-        // Если предлагается пропустить валидацию
-        if (data.canSkipValidation) {
-          // Покажем кнопку для добавления без валидации
-        }
-      }
 
-    } catch (error) {
-      console.error('Ошибка добавления кабинета:', error);
+        // если предлагается пропустить валидацию – покажем кнопку для добавления без проверки
+      }
+    } catch (e) {
+      console.error('Ошибка добавления кабинета:', e);
       setError('Ошибка при добавлении кабинета');
     } finally {
       setIsSubmitting(false);
@@ -153,7 +163,7 @@ export default function CabinetManager({ onUpdate }: CabinetManagerProps) {
 
     try {
       const response = await fetch(`/api/cabinets?id=${cabinetId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
       });
 
       if (response.ok) {
@@ -163,8 +173,8 @@ export default function CabinetManager({ onUpdate }: CabinetManagerProps) {
         const data = await response.json();
         setError(data.error || 'Ошибка при удалении кабинета');
       }
-    } catch (error) {
-      console.error('Ошибка удаления кабинета:', error);
+    } catch (e) {
+      console.error('Ошибка удаления кабинета:', e);
       setError('Ошибка при удалении кабинета');
     }
   };
@@ -174,13 +184,13 @@ export default function CabinetManager({ onUpdate }: CabinetManagerProps) {
       const response = await fetch('/api/cabinets', {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           id: cabinetId,
           isActive: !currentStatus,
-          skipValidation: true
-        })
+          skipValidation: true,
+        }),
       });
 
       if (response.ok) {
@@ -190,17 +200,34 @@ export default function CabinetManager({ onUpdate }: CabinetManagerProps) {
         const data = await response.json();
         setError(data.error || 'Ошибка при обновлении кабинета');
       }
-    } catch (error) {
-      console.error('Ошибка обновления кабинета:', error);
+    } catch (e) {
+      console.error('Ошибка обновления кабинета:', e);
       setError('Ошибка при обновлении кабинета');
     }
   };
+
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="animate-spin h-8 w-8 text-blue-500 mr-3" />
+        <span>Загрузка авторизации...</span>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="text-center p-8">
+        <p className="text-gray-600">Необходимо войти в систему для управления кабинетами</p>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
       <div className="card p-6 text-center">
         <div className="spinner-lg mx-auto mb-4" />
-        <p>Загрузка кабинетов...</p>
+        <p>Загрузка кабинетов…</p>
       </div>
     );
   }
@@ -211,10 +238,12 @@ export default function CabinetManager({ onUpdate }: CabinetManagerProps) {
         {/* Кнопка добавления */}
         <div className="flex justify-between items-center">
           <div>
-            <h3 className="text-lg font-semibold">Кабинеты Wildberries</h3>
-            <p className="text-sm text-gray-600">Управление API токенами для публикации товаров</p>
+            <h3 className="text-lg font-semibold">Кабинеты Wildberries</h3>
+            <p className="text-sm text-gray-600">
+              Управление API‑токенами для публикации товаров
+            </p>
           </div>
-          
+
           <button
             onClick={() => setShowAddForm(true)}
             className="btn-primary"
@@ -239,40 +268,44 @@ export default function CabinetManager({ onUpdate }: CabinetManagerProps) {
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <h4 className="text-lg font-semibold">{cabinet.name}</h4>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        cabinet.isActive 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          cabinet.isActive
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}
+                      >
                         {cabinet.isActive ? 'Активен' : 'Неактивен'}
                       </span>
                     </div>
-                    
+
                     {cabinet.description && (
                       <p className="text-gray-600 mb-3">{cabinet.description}</p>
                     )}
-                    
-                    <div className="grid grid-cols-3 gap-4 text-sm">
+
+                    {/* Адаптивная сетка с метриками */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
                       <div>
                         <span className="font-medium">Всего товаров:</span>
-                        <span className="ml-2">{cabinet.stats.totalProducts}</span>
+                        <span className="ml-2">{cabinet.stats?.totalProducts || 0}</span>
                       </div>
                       <div>
                         <span className="font-medium">Опубликовано:</span>
-                        <span className="ml-2 text-green-600">{cabinet.stats.publishedProducts}</span>
+                        <span className="ml-2 text-green-600">{cabinet.stats?.publishedProducts || 0}</span>
                       </div>
                       <div>
                         <span className="font-medium">В обработке:</span>
-                        <span className="ml-2 text-orange-600">{cabinet.stats.processingProducts}</span>
+                        <span className="ml-2 text-orange-600">{cabinet.stats?.processingProducts || 0}</span>
                       </div>
                     </div>
-                    
+
                     <div className="text-xs text-gray-500 mt-2">
                       Создан: {new Date(cabinet.createdAt).toLocaleDateString('ru-RU')}
                     </div>
                   </div>
-                  
-                  <div className="flex gap-2">
+
+                  {/* Кнопки управления: на мобильных – столбцом, на desktop – строкой */}
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <button
                       onClick={() => {
                         if (cabinet.apiToken && !cabinet.apiToken.includes('*')) {
@@ -285,9 +318,9 @@ export default function CabinetManager({ onUpdate }: CabinetManagerProps) {
                       className="btn-secondary"
                       title="Тестировать соединение"
                     >
-                      <Wifi size={16} />
+                      <TestTube size={16} />
                     </button>
-                    
+
                     <button
                       onClick={() => toggleCabinet(cabinet.id, cabinet.isActive)}
                       className={cabinet.isActive ? 'btn-secondary' : 'btn-primary'}
@@ -295,7 +328,7 @@ export default function CabinetManager({ onUpdate }: CabinetManagerProps) {
                     >
                       {cabinet.isActive ? 'Отключить' : 'Включить'}
                     </button>
-                    
+
                     <button
                       onClick={() => deleteCabinet(cabinet.id)}
                       className="btn-danger"
@@ -310,7 +343,7 @@ export default function CabinetManager({ onUpdate }: CabinetManagerProps) {
           </div>
         )}
 
-        {/* Сообщения */}
+        {/* Сообщения об ошибках/успехе */}
         {error && (
           <div className="alert alert-error">
             <AlertTriangle size={16} />
@@ -385,7 +418,7 @@ export default function CabinetManager({ onUpdate }: CabinetManagerProps) {
                     </>
                   ) : (
                     <>
-                      <Wifi size={16} />
+                      <TestTube size={16} />
                       Проверить соединение
                     </>
                   )}
@@ -518,7 +551,7 @@ export default function CabinetManager({ onUpdate }: CabinetManagerProps) {
                   </>
                 ) : (
                   <>
-                    <Wifi size={16} />
+                    <TestTube size={16} />
                     Тестировать
                   </>
                 )}

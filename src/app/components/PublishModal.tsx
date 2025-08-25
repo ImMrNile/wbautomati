@@ -3,13 +3,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { Cabinet } from '../../../lib/types/cabinet';
+import { useAuth } from './AuthProvider';
 import { X, CheckCircle, AlertCircle, Loader2, ExternalLink } from 'lucide-react';
-
-interface Cabinet {
-  id: string;
-  name: string;
-  isActive: boolean;
-}
 
 interface Product {
   id: string;
@@ -37,6 +33,7 @@ interface PublishModalProps {
 }
 
 export default function PublishModal({ product, onClose, onSuccess }: PublishModalProps) {
+  const { user, loading: authLoading } = useAuth();
   const [cabinets, setCabinets] = useState<Cabinet[]>([]);
   const [selectedCabinets, setSelectedCabinets] = useState<string[]>([]);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -45,12 +42,24 @@ export default function PublishModal({ product, onClose, onSuccess }: PublishMod
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadCabinets();
-  }, []);
+    if (!authLoading && user) {
+      loadCabinets();
+    }
+  }, [authLoading, user]);
 
   const loadCabinets = async () => {
+    if (authLoading || !user) {
+      return;
+    }
+
     try {
+      setLoading(true);
       const response = await fetch('/api/cabinets');
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const data = await response.json();
       setCabinets(data.cabinets.filter((c: Cabinet) => c.isActive));
     } catch (error) {

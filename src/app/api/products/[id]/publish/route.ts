@@ -1,323 +1,185 @@
-// src/app/api/products/[id]/publish/route.ts
+// app/api/products/publish/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient, Cabinet } from '@prisma/client';
-import { WB_API_ENDPOINTS } from '../../../../../../lib/config/wbApiConfig';
+import { PrismaClient } from '@prisma/client';
+
 const prisma = new PrismaClient();
 
-
-interface WBCreateCardRequest {
-  vendorCode: string;
-  title: string;
-  description: string;
-  brand: string;
-  imtId: number;
-  characteristics: Array<{
-    id: number;
-    value: string | number;
-  }>;
-}
-
-// POST - публикация готового товара в Wildberries
 export async function POST(request: NextRequest) {
   try {
+    console.log('🚀 Получен запрос на публикацию товара');
+    
     const body = await request.json();
-    const { productId, cabinetId, customData } = body;
+    const { productId, cabinetIds } = body;
+    
+    console.log('📦 Данные публикации:', {
+      productId,
+      cabinetIds,
+      cabinetsCount: cabinetIds?.length || 0
+    });
 
-    if (!productId) {
-      return NextResponse.json(
-        { error: 'ID продукта обязателен' },
-        { status: 400 }
-      );
+    // Валидация обязательных полей
+    if (!productId || !cabinetIds || !Array.isArray(cabinetIds) || cabinetIds.length === 0) {
+      return NextResponse.json({
+        success: false,
+        error: 'Необходимо указать ID товара и список кабинетов для публикации'
+      }, { status: 400 });
     }
 
-    // Получаем продукт из БД
-    const product = await prisma.product.findUnique({
-      where: { id: productId },
+    // Получение userId (в реальном приложении из токена авторизации)
+    const userId = request.headers.get('x-user-id') || 'default-user-id';
+
+    // Проверяем, что товар существует и принадлежит пользователю
+    const product = await prisma.product.findFirst({
+      where: {
+        id: productId,
+        userId: userId
+      },
       include: {
-        productCabinets: {
-          include: { cabinet: true }
-        }
+        subcategory: true
       }
     });
 
     if (!product) {
-      return NextResponse.json(
-        { error: 'Продукт не найден' },
-        { status: 404 }
-      );
+      return NextResponse.json({
+        success: false,
+        error: 'Товар не найден или у вас нет доступа к нему'
+      }, { status: 404 });
     }
 
-    if (product.status !== 'READY') {
-      return NextResponse.json(
-        { error: 'Продукт еще не готов к публикации' },
-        { status: 400 }
-      );
+    // Проверяем статус товара
+    if (product.status !== 'ANALYZED') {
+      return NextResponse.json({
+        success: false,
+        error: 'Товар должен быть проанализирован ИИ перед публикацией'
+      }, { status: 400 });
     }
 
-    // Получаем кабинет для публикации
-    let cabinet: Cabinet | null = null;
-    if (cabinetId) {
-      cabinet = await prisma.cabinet.findUnique({
-        where: { id: cabinetId }
-      });
-    } else if (product.productCabinets.length > 0) {
-      cabinet = product.productCabinets[0].cabinet;
-    }
-
-    if (!cabinet || !cabinet.isActive) {
-      return NextResponse.json(
-        { error: 'Не найден активный кабинет для публикации' },
-        { status: 400 }
-      );
-    }
-
-    // Обновляем статус на "публикация"
-    await prisma.product.update({
-      where: { id: productId },
-      data: { status: 'PUBLISHING' }
+    // Проверяем, что все указанные кабинеты существуют и принадлежат пользователю
+    const cabinets = await prisma.cabinet.findMany({
+      where: {
+        id: { in: cabinetIds },
+        userId: userId,
+        isActive: true
+      }
     });
 
-    try {
-      // Подготавливаем данные для WB
-      const wbData = await prepareDataForWB(product, customData);
+    if (cabinets.length !== cabinetIds.length) {
+      const foundIds = cabinets.map(c => c.id);
+      const missingIds = cabinetIds.filter(id => !foundIds.includes(id));
       
-      // Создаем карточку в Wildberries
-      const publishResult = await createWBCard(wbData, cabinet.apiToken);
+      return NextResponse.json({
+        success: false,
+        error: `Кабинеты не найдены или неактивны: ${missingIds.join(', ')}`
+      }, { status: 400 });
+    }
 
-      if (publishResult.success) {
-        // Обновляем продукт после успешной публикации
-        await prisma.product.update({
-          where: { id: productId },
-          data: {
-            status: 'PUBLISHED',
-            wbNmId: publishResult.nmId,
-            publishedAt: new Date(),
-            wbData: publishResult.cardData as any
+    console.log(`✅ Найдено ${cabinets.length} активных кабинетов для публикации`);
+
+    // Создаем записи публикации для каждого кабинета
+    const publications = [];
+    
+    for (const cabinet of cabinets) {
+      console.log(`📤 Создание публикации для кабинета: ${cabinet.name}`);
+      
+      try {
+        // Проверяем, нет ли уже публикации в этом кабинете
+        const existingPublication = await prisma.productPublication.findUnique({
+          where: {
+            productId_cabinetId: {
+              productId: productId,
+              cabinetId: cabinet.id
+            }
           }
         });
 
-        // Связываем с кабинетом, если еще не связан
-        if (cabinetId && !product.productCabinets.find(pc => pc.cabinetId === cabinetId)) {
-          await prisma.productCabinet.create({
+        let publication;
+        
+        if (existingPublication) {
+          // Обновляем существующую публикацию
+          publication = await prisma.productPublication.update({
+            where: { id: existingPublication.id },
             data: {
-              productId,
-              cabinetId
+              status: 'QUEUED',
+              errorMessage: null,
+              price: product.price,
+              updatedAt: new Date()
             }
           });
+          console.log(`🔄 Обновлена существующая публикация: ${publication.id}`);
+        } else {
+          // Создаем новую публикацию
+          publication = await prisma.productPublication.create({
+            data: {
+              productId: productId,
+              cabinetId: cabinet.id,
+              status: 'QUEUED',
+              price: product.price
+            }
+          });
+          console.log(`✨ Создана новая публикация: ${publication.id}`);
         }
 
-        return NextResponse.json({
-          success: true,
-          nmId: publishResult.nmId,
-          message: 'Товар успешно опубликован в Wildberries',
-          productUrl: `https://www.wildberries.ru/catalog/${publishResult.nmId}/detail.aspx`
+        publications.push({
+          id: publication.id,
+          cabinetId: cabinet.id,
+          cabinetName: cabinet.name,
+          status: publication.status
         });
 
-      } else {
-        // Обновляем статус на ошибку
-        await prisma.product.update({
-          where: { id: productId },
-          data: {
-            status: 'ERROR',
-            errorMessage: publishResult.error
-          }
+        // В реальном приложении здесь должна быть отправка задачи в очередь
+        // для фактической публикации на Wildberries
+        console.log(`📋 Публикация добавлена в очередь: ${publication.id}`);
+        
+      } catch (error) {
+        console.error(`❌ Ошибка создания публикации для кабинета ${cabinet.name}:`, error);
+        
+        // Продолжаем с другими кабинетами, но записываем ошибку
+        publications.push({
+          cabinetId: cabinet.id,
+          cabinetName: cabinet.name,
+          status: 'FAILED',
+          error: error instanceof Error ? error.message : 'Неизвестная ошибка'
         });
-
-        return NextResponse.json(
-          { error: publishResult.error },
-          { status: 400 }
-        );
-      }
-
-    } catch (error) {
-      // Обновляем статус на ошибку
-      await prisma.product.update({
-        where: { id: productId },
-        data: {
-          status: 'ERROR',
-          errorMessage: 'Ошибка при публикации в Wildberries'
-        }
-      });
-
-      throw error;
-    }
-
-  } catch (error) {
-    console.error('Ошибка публикации товара:', error);
-    return NextResponse.json(
-      { error: 'Внутренняя ошибка сервера' },
-      { status: 500 }
-    );
-  }
-}
-
-// Подготовка данных для API Wildberries
-async function prepareDataForWB(product: any, customData?: any) {
-  const aiCharacteristics = product.aiCharacteristics as any;
-  const referenceData = product.referenceData as any;
-
-  // Генерируем артикул, если не указан
-  const vendorCode = customData?.vendorCode || `AI-${product.id.substring(0, 8)}`;
-
-  // Используем ИИ-генерированное название или кастомное
-  const title = customData?.title || product.generatedName || product.originalName;
-
-  // Используем ИИ-описание или кастомное
-  const description = customData?.description || product.seoDescription || 'Качественный товар';
-
-  // Определяем бренд из аналога или используем дефолтный
-  const brand = customData?.brand || referenceData?.brand || 'NoName';
-
-  // Определяем категорию
-  let categoryId = customData?.categoryId;
-  if (!categoryId && referenceData?.category) {
-    categoryId = await getCategoryIdByName(referenceData.category);
-  }
-  if (!categoryId) {
-    categoryId = 14727; // Дефолтная категория "Товары для дома"
-  }
-
-  // Подготавливаем характеристики
-  const characteristics: Array<{ id: number; value: any }> = [];
-
-  // Добавляем характеристики из ИИ-анализа
-  if (aiCharacteristics?.vision) {
-    if (aiCharacteristics.vision.color) {
-      characteristics.push({
-        id: 14863, // Основной цвет
-        value: aiCharacteristics.vision.color
-      });
-    }
-    if (aiCharacteristics.vision.material) {
-      characteristics.push({
-        id: 14864, // Материал верха
-        value: aiCharacteristics.vision.material
-      });
-    }
-  }
-
-  // Добавляем характеристики из аналога
-  if (referenceData?.characteristics) {
-    for (const char of referenceData.characteristics) {
-      const mappedChar = mapCharacteristicToWB(char);
-      if (mappedChar) {
-        characteristics.push(mappedChar);
       }
     }
-  }
 
-  // Добавляем кастомные характеристики
-  if (customData?.characteristics) {
-    characteristics.push(...customData.characteristics);
-  }
-
-  // Минимальные обязательные характеристики
-  if (characteristics.length === 0) {
-    characteristics.push({
-      id: 14863, // Основной цвет
-      value: aiCharacteristics?.vision?.color || "не указан"
-    });
-  }
-
-  return {
-    vendorCode,
-    title: title.substring(0, 60), // WB лимит
-    description: description.substring(0, 1000), // WB лимит
-    brand,
-    imtId: categoryId,
-    characteristics
-  };
-}
-
-// Создание карточки в Wildberries
-async function createWBCard(cardData: WBCreateCardRequest, apiToken: string): Promise<{
-  success: boolean;
-  nmId?: number;
-  cardData?: any;
-  error?: string;
-}> {
-  try {
-  const response = await fetch(WB_API_ENDPOINTS.uploadCard, {  method: 'POST',
-      headers: {
-        'Authorization': apiToken,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify([cardData])
+    // Обновляем статус товара
+    await prisma.product.update({
+      where: { id: productId },
+      data: {
+        status: 'QUEUED_FOR_PUBLICATION',
+        updatedAt: new Date()
+      }
     });
 
-    const data = await response.json();
+    const successCount = publications.filter(p => p.status !== 'FAILED').length;
+    const failureCount = publications.filter(p => p.status === 'FAILED').length;
 
-    if (response.ok && data.length > 0 && !data[0].error) {
-      return {
-        success: true,
-        nmId: data[0].nmId,
-        cardData: data[0]
-      };
-    } else {
-      return {
-        success: false,
-        error: data[0]?.error || data.message || 'Неизвестная ошибка WB API'
-      };
-    }
+    console.log(`✅ Публикация завершена: ${successCount} успешно, ${failureCount} с ошибками`);
+
+    // Возвращаем результат
+    return NextResponse.json({
+      success: true,
+      message: `Товар поставлен в очередь на публикацию в ${successCount} кабинет(ах)`,
+      data: {
+        productId: productId,
+        totalCabinets: cabinetIds.length,
+        successfulPublications: successCount,
+        failedPublications: failureCount,
+        publications: publications,
+        productStatus: 'QUEUED_FOR_PUBLICATION'
+      }
+    });
 
   } catch (error) {
-    console.error('Ошибка API Wildberries:', error);
-    return {
+    console.error('❌ Критическая ошибка публикации товара:', error);
+    
+    return NextResponse.json({
       success: false,
-      error: 'Ошибка подключения к API Wildberries'
-    };
+      error: 'Внутренняя ошибка сервера при публикации товара',
+      details: error instanceof Error ? error.message : 'Неизвестная ошибка'
+    }, { status: 500 });
+  } finally {
+    await prisma.$disconnect();
   }
-}
-
-// Получение ID категории по названию
-async function getCategoryIdByName(categoryName: string): Promise<number | null> {
-  try {
-    const response = await fetch(WB_API_ENDPOINTS.getAllCategories, {     method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!response.ok) return null;
-
-    const categories = await response.json();
-    const category = categories.find((cat: any) => 
-      cat.objectName?.toLowerCase().includes(categoryName.toLowerCase())
-    );
-
-    return category?.objectId || null;
-
-  } catch (error) {
-    console.error('Ошибка получения категорий:', error);
-    return null;
-  }
-}
-
-// Маппинг характеристик из аналога в формат WB
-function mapCharacteristicToWB(characteristic: any): { id: number; value: string } | null {
-  const charMap: { [key: string]: number } = {
-    'цвет': 14863,
-    'материал': 14864,
-    'размер': 14865,
-    'вес': 14866,
-    'страна производства': 14867,
-    'состав': 14868,
-    'бренд': 14869,
-    'коллекция': 14870,
-    'сезон': 14871,
-    'пол': 14872,
-    'возраст': 14873
-  };
-
-  const lowerName = characteristic.name?.toLowerCase();
-  for (const [key, id] of Object.entries(charMap)) {
-    if (lowerName?.includes(key)) {
-      return {
-        id,
-        value: characteristic.value?.toString() || ''
-      };
-    }
-  }
-
-  return null;
 }
