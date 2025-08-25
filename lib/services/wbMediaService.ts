@@ -27,28 +27,50 @@ export class WBMediaService {
       // Создаем FormData для загрузки
       const formData = new FormData();
       const blob = new Blob([imageBuffer], { type: 'image/jpeg' });
-      formData.append('uploadfile', blob, `${vendorCode}.jpg`);
+      // Используем правильное название поля для WB API
+      formData.append('file', blob, `${vendorCode}.jpg`);
 
-      // Загружаем через WB API
-      const response = await fetch(`${this.baseUrl}/content/v2/media/save`, {
+      // Загружаем через WB API (обновленный эндпоинт)
+      const response = await fetch(`${this.baseUrl}${WB_API_CONFIG.ENDPOINTS.UPLOAD_MEDIA}`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiToken}`
+          'Authorization': `Bearer ${apiToken}`,
+          // Добавляем дополнительные заголовки для совместимости
+          'Accept': 'application/json'
         },
         body: formData
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ Ошибка загрузки медиафайла (${response.status}):`, errorText);
+        let errorText;
+        try {
+          errorText = await response.text();
+        } catch (e) {
+          errorText = `Failed to read error response: ${e}`;
+        }
+        
+        console.error(`❌ Ошибка загрузки медиафайла (${response.status}):`, {
+          status: response.status,
+          statusText: response.statusText,
+          url: response.url,
+          headers: Object.fromEntries(response.headers.entries()),
+          body: errorText
+        });
+        
         return {
           success: false,
           error: `WB Media API Error ${response.status}: ${errorText}`
         };
       }
 
-      const result = await response.json();
-      console.log('✅ Медиафайл успешно загружен в WB');
+      let result;
+      try {
+        result = await response.json();
+        console.log('✅ Медиафайл успешно загружен в WB:', result);
+      } catch (e) {
+        console.log('✅ Медиафайл загружен, но ответ не в формате JSON');
+        result = { uploaded: true };
+      }
 
       return {
         success: true,

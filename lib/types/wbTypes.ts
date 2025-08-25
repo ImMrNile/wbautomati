@@ -1,4 +1,6 @@
-// lib/types/wbTypes.ts - Централизованные типы для WB API
+// lib/types/wbTypes.ts - Типы для работы с WB API
+
+// ===== ОСНОВНЫЕ ТИПЫ WB КАТЕГОРИЙ =====
 
 export interface WBCategory {
   objectID: number;
@@ -12,43 +14,30 @@ export interface CategoryHierarchy {
   name: string;
   parentId?: number;
   children: CategoryHierarchy[];
-  level: number;
-  path: string[];
 }
 
 export interface CategoryCharacteristic {
   id: number;
   name: string;
+  type: 'string' | 'number' | 'boolean' | 'dictionary' | 'date';
   required: boolean;
-  type: 'string' | 'number' | 'boolean' | 'select' | 'multiselect';
-  values?: string[];
-  units?: string[];
-  description?: string;
+  multiselect?: boolean;
+  maxLength?: number;
+  minValue?: number;
+  maxValue?: number;
+  pattern?: string;
+  defaultValue?: string;
+  values?: Array<{ id: number; value: string; displayName?: string }>;
 }
 
-export interface CategorySuggestion {
-  category: WBCategory;
-  confidence: number;
-  reason: string;
-  keywords: string[];
-}
+// ===== ТИПЫ ДЛЯ СОЗДАНИЯ КАРТОЧЕК WB =====
 
-export interface WBApiResponse<T = any> {
-  success: boolean;
-  data?: T;
-  error?: string;
-  taskId?: string;
-  statusCode?: number;
-  warnings?: string[];
-}
-
-// ИСПРАВЛЕННЫЙ интерфейс для создания карточки WB
 export interface WBCardCreateRequest {
-  object: number; // ID категории (не subjectID!)
   vendorCode: string;
+  object: number; // ID категории
+  brand: string;
   title: string;
   description: string;
-  brand: string;
   dimensions: {
     length: number;
     width: number;
@@ -59,11 +48,10 @@ export interface WBCardCreateRequest {
     id: number;
     value: string[];
   }>;
-  composition?: string;
+  composition: string;
   barcode?: string;
 }
 
-// НОВЫЙ интерфейс для старого формата WB API (с variants)
 export interface WBCardCreateRequestLegacy {
   subjectID: number;
   variants: Array<{
@@ -108,55 +96,98 @@ export interface ProductCardData {
   barcode?: string;
 }
 
-// Совместимость с существующим кодом
-export interface WBCategoryLegacy {
-  objectID?: number;
-  subjectID?: number;
-  id?: number;
-  objectName?: string;
-  subjectName?: string;
-  name?: string;
-  parentID?: number;
-  isVisible?: boolean;
+// ===== ТИПЫ ОТВЕТОВ API =====
+
+export interface WBApiResponse {
+  success: boolean;
+  data?: any;
+  error?: string;
+  taskId?: string;
+  warnings?: string[];
+  statusCode?: number;
 }
 
-/**
- * Утилита для нормализации категории из разных источников
- */
-export function normalizeCategory(category: WBCategoryLegacy): WBCategory {
+// ===== УТИЛИТЫ ДЛЯ НОРМАЛИЗАЦИИ =====
+
+export function normalizeCategory(category: any): WBCategory {
   return {
-    objectID: category.objectID || category.subjectID || category.id || 0,
-    objectName: category.objectName || category.subjectName || category.name || 'Без названия',
-    parentID: category.parentID,
+    objectID: category.objectID || category.id || category.subjectID,
+    objectName: category.objectName || category.name || category.subjectName,
+    parentID: category.parentID || category.parentId,
     isVisible: category.isVisible !== false
   };
 }
 
-/**
- * Утилита для получения ID категории из разных форматов
- */
-export function getCategoryId(category: WBCategoryLegacy): number {
-  return category.objectID || category.subjectID || category.id || 0;
+export function getCategoryId(category: WBCategory): number {
+  return category.objectID;
 }
 
-/**
- * Утилита для получения названия категории из разных форматов
- */
-export function getCategoryName(category: WBCategoryLegacy): string {
-  return category.objectName || category.subjectName || category.name || 'Без названия';
-}
-
-// Константы для работы с WB API
-export const WB_LIMITS = {
-  VENDOR_CODE_MAX_LENGTH: 75,
-  TITLE_MAX_LENGTH: 60,
-  DESCRIPTION_MAX_LENGTH: 5000,
-  COMPOSITION_MAX_LENGTH: 1000,
-  CHARACTERISTICS_MAX_COUNT: 100
-} as const;
+// ===== КОНСТАНТЫ =====
 
 export const WB_CATEGORY_DEFAULTS = {
-  FALLBACK_CATEGORY_ID: 14727, // "Товары для дома"
-  ELECTRONICS_CATEGORY_ID: 963, // "Кабели и адаптеры"
-  ACCESSORIES_CATEGORY_ID: 964  // "Аксессуары для электроники"
-} as const;
+  FALLBACK_CATEGORY_ID: 14727, // Товары для дома
+  FALLBACK_CATEGORY_NAME: 'Товары для дома'
+};
+
+// ===== ТИПЫ ДЛЯ КАТЕГОРИЙ ИЗ БД =====
+
+export interface WBSubcategory {
+  id: number;
+  name: string;
+  slug: string;
+  parentCategoryId: number;
+  commissionFbw: number;
+  commissionFbs: number;
+  commissionDbs: number;
+  commissionCc: number;
+  commissionEdbs: number;
+  commissionBooking: number;
+  parentCategory: {
+    id: number;
+    name: string;
+  };
+}
+
+export interface WBParentCategory {
+  id: number;
+  name: string;
+  subcategories: WBSubcategory[];
+  _count?: { subcategories: number };
+}
+
+export interface ProfitCalculation {
+  revenue: number;
+  commission: number;
+  logisticsCost: number;
+  productCost: number;
+  grossProfit: number;
+  netProfit: number;
+  profitMargin: number;
+  commissionRate: number;
+}
+
+// ===== ТИПЫ ДЛЯ ИИ АНАЛИЗА =====
+
+export interface CategorySuggestion {
+  category: WBCategory;
+  confidence: number;
+  reason: string;
+  keywords?: string[];
+}
+
+export interface CharacteristicFillResult {
+  characteristic: CategoryCharacteristic;
+  value: string | number | boolean | string[];
+  confidence: number;
+  source: 'ai_analysis' | 'analog_product' | 'default' | 'unknown';
+  reasoning: string;
+  alternatives?: string[];
+}
+
+// ===== ЭКСПОРТ ПО УМОЛЧАНИЮ =====
+
+export default {
+  WB_CATEGORY_DEFAULTS,
+  normalizeCategory,
+  getCategoryId
+};

@@ -1,281 +1,356 @@
-// lib/utils/sqlite-json.ts
-// Утилиты для работы с JSON полями в SQLite через Prisma
+// lib/utils/sqliteJsonUtils.ts - УТИЛИТЫ ДЛЯ JSON В SQLITE
 
 /**
- * Преобразование объекта в JSON строку для сохранения в SQLite
+ * Утилиты для работы с JSON полями в SQLite
+ * Поскольку SQLite не поддерживает нативный JSON тип,
+ * используем строки с автоматической сериализацией/десериализацией
  */
-export function toSQLiteJSON(obj: any): string {
-  if (obj === null || obj === undefined) {
-    return '';
-  }
+
+// Интерфейсы для агентных метрик
+export interface AgentMetrics {
+  workflowId: string;
+  processingMethod: 'legacy' | 'hybrid' | 'agents';
+  
+  // Общие метрики
+  totalStages: number;
+  completedStages: number;
+  executionTimeMs: number;
+  tokensUsed: number;
+  apiCalls: number;
+  qualityScore: number;
+  confidence: number;
+  
+  // Специфичные метрики
+  characteristicsFilled: number;
+  characteristicsTotal: number;
+  fillPercentage: number;
+  competitorDataUsed: boolean;
+  additionalSearchPerformed: boolean;
+  
+  // Этапы выполнения
+  stageTimings: Record<string, number>;
+  errors: string[];
+  warnings: string[];
+  recommendations: string[];
+  
+  // Timestamp
+  createdAt: string;
+  completedAt?: string;
+}
+
+export interface WorkflowStageData {
+  currentStage: string;
+  completedStages: string[];
+  stageResults: Record<string, any>;
+  progress: {
+    currentStep: number;
+    totalSteps: number;
+    percentage: number;
+    currentAction: string;
+  };
+  performance: {
+    totalDuration: number;
+    agentTimings: Record<string, number>;
+    apiCallCount: number;
+    tokensUsed: number;
+  };
+}
+
+/**
+ * Сериализация объекта в JSON строку для SQLite
+ */
+export function serializeJson<T>(data: T): string {
   try {
-    return JSON.stringify(obj);
+    return JSON.stringify(data, jsonReplacer);
   } catch (error) {
-    console.error('Ошибка сериализации в JSON:', error);
+    console.error('Ошибка сериализации JSON:', error);
     return '{}';
   }
 }
 
 /**
- * Парсинг JSON строки из SQLite обратно в объект
+ * Десериализация JSON строки из SQLite
  */
-export function fromSQLiteJSON<T = any>(jsonString: string | null, fallback: T = {} as T): T {
+export function deserializeJson<T>(jsonString: string | null, fallback: T): T {
   if (!jsonString || jsonString.trim() === '') {
     return fallback;
   }
+  
   try {
-    return JSON.parse(jsonString) as T;
+    return JSON.parse(jsonString, jsonReviver) as T;
   } catch (error) {
-    console.error('Ошибка парсинга JSON:', error);
+    console.error('Ошибка десериализации JSON:', error, 'Строка:', jsonString);
     return fallback;
   }
 }
 
 /**
- * Типизированные интерфейсы для JSON полей
+ * JSON replacer для обработки Date объектов и Map
  */
-export interface ProductDimensions {
-  length?: number;
-  width?: number;
-  height?: number;
-  weight?: number;
-}
-
-export interface ProductReferenceData {
-  id: string;
-  name: string;
-  brand: string;
-  price: number;
-  category: string;
-  categoryId?: number;
-  characteristics: Array<{ name: string; value: string }>;
-  description: string;
-  images: string[];
-  rating?: number;
-  reviewsCount?: number;
-  availability?: boolean;
-  vendorCode?: string;
-  supplierId?: string;
-}
-
-export interface ProductAICharacteristics {
-  geminiAnalysis: {
-    wbCategory?: string;
-    seoTitle?: string;
-    seoDescription?: string;
-    visualAnalysis?: {
-      productType?: string;
-      primaryColor?: string;
-      material?: string;
+function jsonReplacer(key: string, value: any): any {
+  if (value instanceof Date) {
+    return {
+      __type: 'Date',
+      value: value.toISOString()
     };
-    characteristics?: Array<{ id: number; value: string }>;
-  };
-  wbData: {
-    vendorCode: string;
-    title: string;
-    description: string;
-    brand: string;
-    imtId: number;
-    characteristics: Array<{ id: number; value: string }>;
-  };
-  category: {
-    id: number;
-    name: string;
-  };
-}
-
-export interface ProductWBData {
-  nmId?: string;
-  vendorCode?: string;
-  status?: string;
-  createdAt?: string;
-  error?: string;
-  rawResponse?: any;
+  }
+  
+  if (value instanceof Map) {
+    return {
+      __type: 'Map',
+      value: Array.from(value.entries())
+    };
+  }
+  
+  if (value instanceof Set) {
+    return {
+      __type: 'Set',
+      value: Array.from(value)
+    };
+  }
+  
+  return value;
 }
 
 /**
- * Расширенные методы для работы с продуктами
+ * JSON reviver для восстановления Date объектов и Map
  */
-export class ProductJSONHelper {
-  /**
-   * Получение размеров продукта
-   */
-  static getDimensions(product: any): ProductDimensions {
-    return fromSQLiteJSON<ProductDimensions>(product.dimensions, {});
-  }
-
-  /**
-   * Установка размеров продукта
-   */
-  static setDimensions(dimensions: ProductDimensions): string {
-    return toSQLiteJSON(dimensions);
-  }
-
-  /**
-   * Получение данных аналога
-   */
-  static getReferenceData(product: any): ProductReferenceData | null {
-    const data = fromSQLiteJSON<ProductReferenceData | null>(product.referenceData, null);
-    return data;
-  }
-
-  /**
-   * Установка данных аналога
-   */
-  static setReferenceData(referenceData: ProductReferenceData): string {
-    return toSQLiteJSON(referenceData);
-  }
-
-  /**
-   * Получение AI характеристик
-   */
-  static getAICharacteristics(product: any): ProductAICharacteristics | null {
-    return fromSQLiteJSON<ProductAICharacteristics | null>(product.aiCharacteristics, null);
-  }
-
-  /**
-   * Установка AI характеристик
-   */
-  static setAICharacteristics(characteristics: ProductAICharacteristics): string {
-    return toSQLiteJSON(characteristics);
-  }
-
-  /**
-   * Получение данных WB
-   */
-  static getWBData(product: any): ProductWBData {
-    return fromSQLiteJSON<ProductWBData>(product.wbData, {});
-  }
-
-  /**
-   * Установка данных WB
-   */
-  static setWBData(wbData: ProductWBData): string {
-    return toSQLiteJSON(wbData);
-  }
-
-  /**
-   * Безопасное получение всех JSON полей продукта
-   */
-  static getFullProductData(product: any) {
-    return {
-      ...product,
-      dimensions: this.getDimensions(product),
-      referenceData: this.getReferenceData(product),
-      aiCharacteristics: this.getAICharacteristics(product),
-      wbData: this.getWBData(product)
-    };
-  }
-
-  /**
-   * Валидация JSON данных перед сохранением
-   */
-  static validateProductData(data: {
-    dimensions?: any;
-    referenceData?: any;
-    aiCharacteristics?: any;
-    wbData?: any;
-  }): { isValid: boolean; errors: string[] } {
-    const errors: string[] = [];
-
-    // Проверка размеров
-    if (data.dimensions) {
-      const dims = data.dimensions as ProductDimensions;
-      if (dims.length !== undefined && (typeof dims.length !== 'number' || dims.length <= 0)) {
-        errors.push('Длина должна быть положительным числом');
-      }
-      if (dims.width !== undefined && (typeof dims.width !== 'number' || dims.width <= 0)) {
-        errors.push('Ширина должна быть положительным числом');
-      }
-      if (dims.height !== undefined && (typeof dims.height !== 'number' || dims.height <= 0)) {
-        errors.push('Высота должна быть положительным числом');
-      }
-      if (dims.weight !== undefined && (typeof dims.weight !== 'number' || dims.weight <= 0)) {
-        errors.push('Вес должен быть положительным числом');
-      }
+function jsonReviver(key: string, value: any): any {
+  if (value && typeof value === 'object' && value.__type) {
+    switch (value.__type) {
+      case 'Date':
+        return new Date(value.value);
+      case 'Map':
+        return new Map(value.value);
+      case 'Set':
+        return new Set(value.value);
     }
+  }
+  
+  return value;
+}
 
-    // Проверка данных аналога
-    if (data.referenceData) {
-      const ref = data.referenceData as ProductReferenceData;
-      if (!ref.id || !ref.name) {
-        errors.push('Данные аналога должны содержать ID и название');
-      }
+/**
+ * Создание агентных метрик
+ */
+export function createAgentMetrics(
+  workflowId: string,
+  processingMethod: 'legacy' | 'hybrid' | 'agents',
+  result: any
+): AgentMetrics {
+  const now = new Date().toISOString();
+  
+  return {
+    workflowId,
+    processingMethod,
+    
+    // Общие метрики
+    totalStages: result.agentStats?.totalStages || 0,
+    completedStages: result.agentStats?.completedStages || 0,
+    executionTimeMs: result.agentStats?.executionTimeMs || 0,
+    tokensUsed: result.agentStats?.tokensUsed || 0,
+    apiCalls: result.agentStats?.apiCalls || 0,
+    qualityScore: result.agentStats?.qualityScore || result.qualityScore || 0,
+    confidence: result.confidence || 0,
+    
+    // Специфичные метрики
+    characteristicsFilled: result.agentStats?.characteristicsFilled || result.characteristics?.length || 0,
+    characteristicsTotal: result.agentStats?.characteristicsTotal || 0,
+    fillPercentage: result.agentStats?.fillPercentage || 0,
+    competitorDataUsed: result.agentStats?.competitorDataUsed || false,
+    additionalSearchPerformed: result.agentStats?.additionalSearchPerformed || false,
+    
+    // Детали выполнения
+    stageTimings: result.agentStats?.stageTimings || {},
+    errors: result.errors || [],
+    warnings: result.warnings || [],
+    recommendations: result.recommendations || [],
+    
+    // Timestamps
+    createdAt: now,
+    completedAt: result.agentStats?.completedAt || now
+  };
+}
+
+/**
+ * Обновление агентных метрик
+ */
+export function updateAgentMetrics(
+  existingMetrics: AgentMetrics,
+  updates: Partial<AgentMetrics>
+): AgentMetrics {
+  return {
+    ...existingMetrics,
+    ...updates,
+    // Объединяем массивы
+    errors: [...(existingMetrics.errors || []), ...(updates.errors || [])],
+    warnings: [...(existingMetrics.warnings || []), ...(updates.warnings || [])],
+    recommendations: [...(existingMetrics.recommendations || []), ...(updates.recommendations || [])],
+    
+    // Объединяем объекты
+    stageTimings: {
+      ...existingMetrics.stageTimings,
+      ...updates.stageTimings
     }
+  };
+}
 
+/**
+ * Валидация агентных метрик
+ */
+export function validateAgentMetrics(metrics: any): metrics is AgentMetrics {
+  return (
+    typeof metrics === 'object' &&
+    typeof metrics.workflowId === 'string' &&
+    typeof metrics.processingMethod === 'string' &&
+    ['legacy', 'hybrid', 'agents'].includes(metrics.processingMethod) &&
+    typeof metrics.totalStages === 'number' &&
+    typeof metrics.completedStages === 'number'
+  );
+}
+
+/**
+ * Создание данных этапа workflow
+ */
+export function createWorkflowStageData(
+  currentStage: string,
+  completedStages: string[] = [],
+  stageResults: Record<string, any> = {},
+  progress: any = {}
+): WorkflowStageData {
+  return {
+    currentStage,
+    completedStages,
+    stageResults,
+    progress: {
+      currentStep: progress.currentStep || 0,
+      totalSteps: progress.totalSteps || 0,
+      percentage: progress.percentage || 0,
+      currentAction: progress.currentAction || ''
+    },
+    performance: {
+      totalDuration: 0,
+      agentTimings: {},
+      apiCallCount: 0,
+      tokensUsed: 0
+    }
+  };
+}
+
+/**
+ * Помощники для работы с Product полями
+ */
+export class ProductJsonHelper {
+  /**
+   * Сохранение агентных метрик в Product
+   */
+  static setAgentMetrics(metrics: AgentMetrics): string {
+    return serializeJson(metrics);
+  }
+
+  /**
+   * Получение агентных метрик из Product
+   */
+  static getAgentMetrics(product: any): AgentMetrics | null {
+    if (!product.agentMetrics) return null;
+    
+    const metrics = deserializeJson(product.agentMetrics, null);
+    
+    if (validateAgentMetrics(metrics)) {
+      return metrics;
+    }
+    
+    return null;
+  }
+
+  /**
+   * Сохранение данных этапа workflow
+   */
+  static setWorkflowData(stageData: WorkflowStageData): string {
+    return serializeJson(stageData);
+  }
+
+  /**
+   * Получение данных этапа workflow
+   */
+  static getWorkflowData(jsonString: string | null): WorkflowStageData | null {
+    const fallback = createWorkflowStageData('unknown');
+    return deserializeJson(jsonString, fallback);
+  }
+
+  /**
+   * Обновление существующих agentMetrics
+   */
+  static updateAgentMetrics(
+    existingJsonString: string | null,
+    updates: Partial<AgentMetrics>
+  ): string {
+    const existing = this.getAgentMetrics({ agentMetrics: existingJsonString });
+    
+    if (!existing) {
+      // Создаем новые метрики если их нет
+      const newMetrics = createAgentMetrics(
+        updates.workflowId || 'unknown',
+        updates.processingMethod || 'legacy',
+        updates
+      );
+      return this.setAgentMetrics(newMetrics);
+    }
+    
+    const updated = updateAgentMetrics(existing, updates);
+    return this.setAgentMetrics(updated);
+  }
+
+  /**
+   * Проверка, использовались ли агенты для обработки
+   */
+  static wasProcessedByAgents(product: any): boolean {
+    const metrics = this.getAgentMetrics(product);
+    return metrics?.processingMethod === 'agents' || metrics?.processingMethod === 'hybrid';
+  }
+
+  /**
+   * Получение краткой статистики для UI
+   */
+  static getProcessingSummary(product: any): {
+    method: string;
+    quality: number;
+    duration: number;
+    characteristics: number;
+    hasErrors: boolean;
+    hasWarnings: boolean;
+  } {
+    const metrics = this.getAgentMetrics(product);
+    
+    if (!metrics) {
+      return {
+        method: 'unknown',
+        quality: 0,
+        duration: 0,
+        characteristics: 0,
+        hasErrors: false,
+        hasWarnings: false
+      };
+    }
+    
     return {
-      isValid: errors.length === 0,
-      errors
+      method: metrics.processingMethod,
+      quality: metrics.qualityScore,
+      duration: metrics.executionTimeMs,
+      characteristics: metrics.characteristicsFilled,
+      hasErrors: metrics.errors.length > 0,
+      hasWarnings: metrics.warnings.length > 0
     };
   }
 }
 
-/**
- * Типы для работы с Prisma и SQLite
- */
-export type SQLiteJSONField = string | null;
-
-/**
- * Хелпер для создания типизированных запросов к базе
- */
-export class PrismaJSONHelper {
-  /**
-   * Подготовка данных для создания продукта
-   */
-  static prepareProductCreateData(data: {
-    originalName: string;
-    originalImage: string;
-    dimensions: ProductDimensions;
-    price: number;
-    referenceUrl?: string;
-    status: string;
-    referenceData?: ProductReferenceData;
-  }) {
-    return {
-      originalName: data.originalName,
-      originalImage: data.originalImage,
-      dimensions: ProductJSONHelper.setDimensions(data.dimensions),
-      price: data.price,
-      referenceUrl: data.referenceUrl,
-      status: data.status,
-      referenceData: data.referenceData ? ProductJSONHelper.setReferenceData(data.referenceData) : null
-    };
-  }
-
-  /**
-   * Подготовка данных для обновления продукта
-   */
-  static prepareProductUpdateData(data: {
-    generatedName?: string;
-    seoDescription?: string;
-    suggestedCategory?: string;
-    colorAnalysis?: string;
-    aiCharacteristics?: ProductAICharacteristics;
-    status?: string;
-    wbData?: ProductWBData;
-    wbNmId?: string;
-    publishedAt?: Date;
-    errorMessage?: string;
-  }) {
-    const updateData: any = {};
-    
-    if (data.generatedName !== undefined) updateData.generatedName = data.generatedName;
-    if (data.seoDescription !== undefined) updateData.seoDescription = data.seoDescription;
-    if (data.suggestedCategory !== undefined) updateData.suggestedCategory = data.suggestedCategory;
-    if (data.colorAnalysis !== undefined) updateData.colorAnalysis = data.colorAnalysis;
-    if (data.status !== undefined) updateData.status = data.status;
-    if (data.wbNmId !== undefined) updateData.wbNmId = data.wbNmId;
-    if (data.publishedAt !== undefined) updateData.publishedAt = data.publishedAt;
-    if (data.errorMessage !== undefined) updateData.errorMessage = data.errorMessage;
-    
-    if (data.aiCharacteristics !== undefined) {
-      updateData.aiCharacteristics = ProductJSONHelper.setAICharacteristics(data.aiCharacteristics);
-    }
-    
-    if (data.wbData !== undefined) {
-      updateData.wbData = ProductJSONHelper.setWBData(data.wbData);
-    }
-    
-    return updateData;
-  }
-}
+// Экспорт для использования в других модулях
+export default {
+  serializeJson,
+  deserializeJson,
+  createAgentMetrics,
+  updateAgentMetrics,
+  validateAgentMetrics,
+  createWorkflowStageData,
+  ProductJsonHelper
+};

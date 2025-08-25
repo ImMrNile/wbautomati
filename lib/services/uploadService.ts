@@ -1,4 +1,34 @@
-// lib/services/uploadService.ts - ПОЛНЫЙ СЕРВИС ЗАГРУЗКИ ФАЙЛОВ
+// lib/services/uploadService.ts - ИСПРАВЛЕННЫЙ СЕРВИС ЗАГРУЗКИ БЕЗ ДУБЛИРОВАНИЯ
+
+export interface UploadResult {
+  success: boolean;
+  url?: string;
+  error?: string;
+}
+
+export interface FileInfo {
+  exists: boolean;
+  size?: number;
+  type?: string;
+  lastModified?: Date;
+}
+
+export interface BatchUploadResult {
+  successful: string[];
+  failed: Array<{ file: string; error: string }>;
+}
+
+export interface ServiceHealth {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  message: string;
+}
+
+export interface UploadSettings {
+  maxFileSize: number;
+  maxFileSizeFormatted: string;
+  allowedTypes: string[];
+  allowedExtensions: string[];
+}
 
 export class UploadService {
   private readonly maxFileSize = 10 * 1024 * 1024; // 10MB
@@ -143,12 +173,7 @@ export class UploadService {
   /**
    * Получение информации о файле по URL
    */
-  async getFileInfo(url: string): Promise<{
-    exists: boolean;
-    size?: number;
-    type?: string;
-    lastModified?: Date;
-  }> {
+  async getFileInfo(url: string): Promise<FileInfo> {
     try {
       // Для data URLs
       if (url.startsWith('data:')) {
@@ -191,10 +216,7 @@ export class UploadService {
   /**
    * Массовая загрузка файлов
    */
-  async uploadMultipleFiles(files: FileList | File[]): Promise<{
-    successful: string[];
-    failed: Array<{ file: string; error: string }>;
-  }> {
+  async uploadMultipleFiles(files: FileList | File[]): Promise<BatchUploadResult> {
     const successful: string[] = [];
     const failed: Array<{ file: string; error: string }> = [];
 
@@ -222,10 +244,7 @@ export class UploadService {
   /**
    * Проверка доступности сервиса загрузки
    */
-  async checkServiceHealth(): Promise<{
-    status: 'healthy' | 'degraded' | 'unhealthy';
-    message: string;
-  }> {
+  async checkServiceHealth(): Promise<ServiceHealth> {
     try {
       // Проверяем базовую функциональность
       const testBlob = new Blob(['test'], { type: 'text/plain' });
@@ -257,7 +276,7 @@ export class UploadService {
   /**
    * Получение настроек загрузки
    */
-  getUploadSettings() {
+  getUploadSettings(): UploadSettings {
     return {
       maxFileSize: this.maxFileSize,
       maxFileSizeFormatted: this.formatFileSize(this.maxFileSize),
@@ -413,4 +432,5 @@ export class UploadService {
   }
 }
 
+// Экспортируем единственный экземпляр сервиса
 export const uploadService = new UploadService();

@@ -10,8 +10,6 @@ import {
   WBCardCreateRequest
 } from '../types/wbTypes';
 
-// Экспортируем типы для совместимости
-export type { WBCardCreateRequest, WBApiResponse } from '../types/wbTypes';
 
 export class ProxyEnabledWbService {
   private readonly useProxy: boolean;
